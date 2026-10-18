@@ -219,6 +219,9 @@ pub fn recommended_zaap<'a>(text: &str, known: &'a [Zaap]) -> Option<&'a Zaap> {
     static TRANSPORT: OnceLock<Regex> = OnceLock::new();
     let transport = TRANSPORT
         .get_or_init(|| Regex::new(r"(?i)\bzaapi?\b").expect("expression régulière valide"));
+    static ENSEVELI: OnceLock<Regex> = OnceLock::new();
+    let enseveli = ENSEVELI
+        .get_or_init(|| Regex::new(r"\bvillage ensevelli\b").expect("expression régulière valide"));
     let mut matches = HashSet::new();
 
     for line in joined.lines() {
@@ -237,6 +240,9 @@ pub fn recommended_zaap<'a>(text: &str, known: &'a [Zaap]) -> Option<&'a Zaap> {
                 end -= 1;
             }
             let label = normalize(&line[tag.start()..end]);
+            // Accept the spelling used by some Ganymede instructions while
+            // preserving the directory's canonical name and coordinates.
+            let label = enseveli.replace_all(&label, "village enseveli");
             let named: Vec<usize> = known
                 .iter()
                 .enumerate()
@@ -543,6 +549,62 @@ mod fragmented_accessibility_tests {
         ] {
             let text = format!("[-32,40]\n497/774\n{instruction}");
             assert!(Step::from_text(&text, &known)
+                .command(Action::Combined)
+                .is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod enseveli_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_and_ganymede_spellings_resolve_to_the_same_zaap() {
+        let known = crate::data::embedded().unwrap();
+        for name in ["Village enseveli", "Village ensevelli", "VILLAGE ENSEVELLI"] {
+            let text = format!("566\n/\n774\nEntrez dans l'Atelier des bûcherons.\nParlez à Enileda.\nEnsuite\nallez en\n[-78,-70]\nZaap\ndu\n{name}\n2 maps en bas\n1 map à gauche\n1 map en bas");
+            let step = Step::from_text(&text, &known);
+            assert_eq!(
+                step.command(Action::Zaap).unwrap(),
+                "/zaap -77,-73",
+                "{name}"
+            );
+            assert_eq!(
+                step.command(Action::Travel).unwrap(),
+                "/travel -78 -70",
+                "{name}"
+            );
+            assert_eq!(
+                step.command(Action::Combined).unwrap(),
+                "/zaap -77,-73; /zaap -77,-73; /travel -78 -70",
+                "{name}"
+            );
+        }
+        assert_eq!(known.len(), 45);
+        assert_eq!(
+            known
+                .iter()
+                .filter(|zaap| zaap.name == "Village enseveli")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn spelling_alias_does_not_turn_a_zaapi_or_an_unknown_place_into_a_zaap() {
+        let known = crate::data::embedded().unwrap();
+        let zaapi = Step::from_text(
+            "566/774\nZaapi du Village ensevelli\nAllez en [-78,-70]",
+            &known,
+        );
+        assert!(zaapi.command(Action::Zaap).is_err());
+        assert_eq!(zaapi.command(Action::Combined).unwrap(), "/travel -78 -70");
+        for text in [
+            "566/774\nZaap du Village ensevellissement\nAllez en [-78,-70]",
+            "566/774\nZaap du Village ensevelli\nZaap de Bonta\nAllez en [-78,-70]",
+        ] {
+            assert!(Step::from_text(text, &known)
                 .command(Action::Combined)
                 .is_err());
         }

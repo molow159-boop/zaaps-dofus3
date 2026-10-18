@@ -1,5 +1,11 @@
 # Historique des versions
 
+## 1.0.1
+
+- Reconnaissance de « Village ensevelli », variante utilisée dans Ganymède, comme le Zaap « Village enseveli ».
+- Conservation des coordonnées du Zaap et prise en charge des deux écritures pour les raccourcis et le mode automatique.
+- Tests de non-régression sur les variantes du nom, les Zaapis et les destinations ambiguës.
+
 ## 1.0.0
 
 - Répertoire intégré de 45 zaaps, recherche et copie rapide.
