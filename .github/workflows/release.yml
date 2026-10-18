@@ -1,0 +1,108 @@
+name: Version Windows
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Compiler et empaqueter
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - name: Sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Normaliser les chemins de compilation
+        shell: pwsh
+        run: |
+          "RUSTFLAGS=--remap-path-prefix=$env:USERPROFILE=. --remap-path-prefix=$env:GITHUB_WORKSPACE=." >> $env:GITHUB_ENV
+      - name: Chaîne Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
+          components: "rustfmt, clippy"
+      - name: Cache de compilation
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Vérifier version et verrouillage
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'Cargo.lock')) { throw 'Cargo.lock manquant' }
+          $expected = '${{ github.ref_name }}'
+          $cargo = Get-Content 'Cargo.toml' -Raw
+          $version = [regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          if ($expected -ne "v$version") { throw "Tag $expected != version Cargo.toml v$version" }
+      - name: Vérifier format
+        run: cargo fmt --all -- --check
+      - name: Vérifier tests
+        run: cargo test --release --locked
+      - name: Compiler Windows x64
+        run: cargo build --release --locked
+      - name: Préparer les archives
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $out = 'publication'
+          $folder = Join-Path $out 'portable'
+          New-Item -ItemType Directory -Force -Path $folder | Out-Null
+          Copy-Item -LiteralPath 'target/release/zaaps-dofus3.exe' -Destination (Join-Path $folder 'Zaaps Dofus 3.exe')
+          Copy-Item -LiteralPath 'A-LIRE-UTILISATEUR.txt' -Destination (Join-Path $folder 'A-LIRE.txt')
+          $binary = "$out/Zaaps-Dofus3-$version-Windows-x64.zip"
+          $sources = "$out/Zaaps-Dofus3-$version-Sources.zip"
+          Compress-Archive -Path "$folder/*" -DestinationPath $binary -CompressionLevel Optimal
+          git archive --format=zip --output=$sources HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Archive source impossible' }
+          $paths = @($binary, $sources)
+          foreach ($path in $paths) {
+            if (!(Test-Path $path)) { throw "Archive manquante : $path" }
+          }
+          $exe = (Join-Path $folder 'Zaaps Dofus 3.exe')
+          $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $exe).Path)
+          if ($info.FileVersion -notmatch ('^' + [regex]::Escape($version) + '($|\.)')) {
+            throw "Version de l'executable incoherente : $($info.FileVersion), attendue $version"
+          }
+          $paths += $exe
+          $records = $paths | ForEach-Object {
+            $hash = (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $([System.IO.Path]::GetFileName($_))"
+          }
+          $records | Set-Content -Path "$out/SHA256.txt" -Encoding utf8
+      - name: Conserver les archives entre les tâches
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zaaps-dofus3-${{ github.ref_name }}
+          path: |
+            publication/Zaaps-Dofus3-*.zip
+            publication/SHA256.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Créer la Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Récupérer les archives vérifiées
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: zaaps-dofus3-${{ github.ref_name }}
+          path: distribution
+      - name: Publier les archives du tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          test -f distribution/SHA256.txt
+          test "$(find distribution -maxdepth 1 -name '*.zip' | wc -l)" -eq 2
+          gh release create "$RELEASE_TAG" distribution/*.zip distribution/SHA256.txt \
+            --verify-tag \
+            --title "Zaaps Dofus 3 ${RELEASE_TAG#v}" \
+            --generate-notes

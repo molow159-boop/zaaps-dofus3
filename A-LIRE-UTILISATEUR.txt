@@ -1,0 +1,28 @@
+ZAAPS DOFUS 3 — 1.0.0
+Windows 10/11 x64
+
+1. Extraire entièrement l'archive.
+2. Ouvrir Ganymède sur le guide souhaité.
+3. Lancer « Zaaps Dofus 3.exe ».
+
+Ctrl+J : copier le Zaap recommandé.
+Ctrl+K : copier la destination /travel.
+Ctrl+L : copier le trajet complet disponible.
+
+Avec un Zaap et une destination : double /zaap puis /travel.
+Avec seulement un Zaapi ou sans Zaap : /travel seul si exploitable.
+Sans destination exploitable : aucune copie.
+
+Auto copie à la prochaine nouvelle étape reconnue. L'étape présente
+à l'activation sert de référence et n'est pas copiée automatiquement.
+Les raccourcis se modifient dans les réglages.
+
+Le logiciel copie uniquement dans le presse-papiers. Coller manuellement
+dans Dofus. Aucune installation de Rust nécessaire pour utiliser l'EXE.
+
+Préférences : %APPDATA%\Zaaps Dofus 3\raccourcis.ini
+
+Téléchargements et sources :
+https://github.com/molow159-boop/zaaps-dofus3
+
+Projet indépendant, sans affiliation à Ankama ni à l'équipe Ganymède.

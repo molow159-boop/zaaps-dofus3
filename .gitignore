@@ -1,0 +1,28 @@
+# Fichiers générés pendant la compilation et la publication
+/target/
+/dist/
+/publication/
+*.log
+*.tmp
+*.bak
+*.pdb
+*.ilk
+
+# Fichiers locaux, secrets et configurations personnelles
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key
+*.kdbx
+*.user
+*.suo
+.vs/
+.idea/
+.vscode/
+Thumbs.db
+Desktop.ini
+
+# Cargo.lock DOIT être versionné pour cette application

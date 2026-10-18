@@ -1,0 +1,59 @@
+name: Validation Windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Tests et compilation Windows
+    runs-on: windows-2025
+    timeout-minutes: 45
+    steps:
+      - name: Sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Normaliser les chemins de compilation
+        shell: pwsh
+        run: |
+          "RUSTFLAGS=--remap-path-prefix=$env:USERPROFILE=. --remap-path-prefix=$env:GITHUB_WORKSPACE=." >> $env:GITHUB_ENV
+      - name: Chaîne Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: "1.99.1"
+          components: "rustfmt, clippy"
+      - name: Cache de compilation
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Verrouillage présent
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'Cargo.lock')) { throw 'Cargo.lock manquant : exécuter cargo generate-lockfile puis le versionner.' }
+      - name: Format
+        run: cargo fmt --all -- --check
+      - name: Analyse du code
+        run: cargo clippy --all-targets --locked -- -D warnings
+      - name: Tests
+        run: cargo test --release --locked
+      - name: Compilation
+        run: cargo build --release --locked
+      - name: Contrôle de l'exécutable
+        shell: pwsh
+        run: |
+          $exe = 'target/release/zaaps-dofus3.exe'
+          if (!(Test-Path $exe)) { throw 'EXE introuvable après compilation.' }
+          $hash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
+          $info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo((Resolve-Path $exe).Path)
+          $cargo = Get-Content 'Cargo.toml' -Raw
+          $expected = [regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
+          $parts = $expected.Split('.')
+          if ($parts.Count -ne 3) { throw "Version Cargo invalide : $expected" }
+          $actual = "$($info.FileMajorPart).$($info.FileMinorPart).$($info.FileBuildPart)"
+          if ($actual -ne $expected -or $info.FilePrivatePart -ne 0) {
+            throw "Version Windows incorrecte : $($info.FileVersion) (attendu : $expected)"
+          }
+          Write-Host "Version de l'executable: $($info.FileVersion)"
+          Write-Host "EXE SHA256: $hash"
