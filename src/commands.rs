@@ -222,6 +222,7 @@ pub fn recommended_zaap<'a>(text: &str, known: &'a [Zaap]) -> Option<&'a Zaap> {
     static ENSEVELI: OnceLock<Regex> = OnceLock::new();
     let enseveli = ENSEVELI
         .get_or_init(|| Regex::new(r"\bvillage ensevelli\b").expect("expression régulière valide"));
+    let names: Vec<String> = known.iter().map(|zaap| normalize(&zaap.name)).collect();
     let mut matches = HashSet::new();
 
     for line in joined.lines() {
@@ -243,11 +244,36 @@ pub fn recommended_zaap<'a>(text: &str, known: &'a [Zaap]) -> Option<&'a Zaap> {
             // Accept the spelling used by some Ganymede instructions while
             // preserving the directory's canonical name and coordinates.
             let label = enseveli.replace_all(&label, "village enseveli");
-            let named: Vec<usize> = known
+            let mut occurrences = Vec::new();
+            for (index, name) in names.iter().enumerate() {
+                for (start, _) in label.match_indices(name.as_str()) {
+                    let end = start + name.len();
+                    let left_boundary = label[..start]
+                        .chars()
+                        .next_back()
+                        .is_none_or(|c| !c.is_alphanumeric());
+                    let right_boundary = label[end..]
+                        .chars()
+                        .next()
+                        .is_none_or(|c| !c.is_alphanumeric());
+                    if left_boundary && right_boundary {
+                        occurrences.push((index, start, end));
+                    }
+                }
+            }
+            // A name nested in a longer match is the same mention, e.g.
+            // "Cimetière" inside "Cimetière primitif". Separate mentions
+            // remain separate candidates and must still be rejected as ambiguous.
+            let named: Vec<usize> = occurrences
                 .iter()
-                .enumerate()
-                .filter(|(_, zaap)| label.contains(&normalize(&zaap.name)))
-                .map(|(index, _)| index)
+                .filter(|(_, start, end)| {
+                    !occurrences.iter().any(|(_, outer_start, outer_end)| {
+                        outer_start <= start
+                            && end <= outer_end
+                            && (outer_start < start || end < outer_end)
+                    })
+                })
+                .map(|(index, _, _)| *index)
                 .collect();
             if !named.is_empty() {
                 matches.extend(named);
@@ -608,5 +634,59 @@ mod enseveli_tests {
                 .command(Action::Combined)
                 .is_err());
         }
+    }
+}
+
+#[cfg(test)]
+mod cemetery_tests {
+    use super::*;
+
+    #[test]
+    fn primitive_cemetery_step_is_not_confused_with_incarnam_cemetery() {
+        let known = crate::data::embedded().unwrap();
+        let text = "[4,12]\n587\n/\n774\nEntrez dans la maison.\nParlez à Karine.\nEnsuite parlez à Tati le Collectionneur.\nEnsuite\nallez en\n[-15,19]\nZaap\ndu\nCimetière primitif\n1 map à gauche\nEntrez dans la grotte\nRessortez par la gauche\n1 map à gauche";
+        let step = Step::from_text(text, &known);
+        assert_eq!(step.command(Action::Zaap).unwrap(), "/zaap -12,19");
+        assert_eq!(step.command(Action::Travel).unwrap(), "/travel -15 19");
+        assert_eq!(
+            step.command(Action::Combined).unwrap(),
+            "/zaap -12,19; /zaap -12,19; /travel -15 19"
+        );
+    }
+
+    #[test]
+    fn standalone_cemetery_and_primitive_cemetery_are_order_independent() {
+        let mut known = crate::data::embedded().unwrap();
+        for _ in 0..2 {
+            for (name, command) in [
+                ("Cimetière", "/zaap 3,0"),
+                ("Cimetière primitif", "/zaap -12,19"),
+            ] {
+                let step = Step::from_text(&format!("Zaap du {name}\nAllez en [-15,19]"), &known);
+                assert_eq!(step.command(Action::Zaap).unwrap(), command);
+            }
+            known.reverse();
+        }
+    }
+
+    #[test]
+    fn distinct_cemetery_mentions_remain_ambiguous() {
+        let known = crate::data::embedded().unwrap();
+        for text in [
+            "Zaap du Cimetière primitif ; Zaap du Cimetière\nAllez en [-15,19]",
+            "Zaap du Cimetière primitif puis Cimetière\nAllez en [-15,19]",
+            "Zaap du Cimetière puis Cimetière primitif\nAllez en [-15,19]",
+            "Zaap du Supercimetière primitif\nAllez en [-15,19]",
+        ] {
+            assert!(
+                Step::from_text(text, &known)
+                    .command(Action::Combined)
+                    .is_err(),
+                "{text}"
+            );
+        }
+        let step = Step::from_text("Zaapi du Cimetière primitif\nAllez en [-15,19]", &known);
+        assert!(step.command(Action::Zaap).is_err());
+        assert_eq!(step.command(Action::Combined).unwrap(), "/travel -15 19");
     }
 }

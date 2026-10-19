@@ -1,5 +1,11 @@
 # Historique des versions
 
+## 1.0.2
+
+- Correction de la détection de « Cimetière primitif », désormais distingué du Zaap « Cimetière » d'Incarnam.
+- Priorité au nom complet lorsque deux noms se recouvrent dans une même mention ; les mentions distinctes restent refusées en cas d'ambiguïté.
+- Tests de non-régression sur l'étape, les deux cimetières, les Zaapis et les mentions ambiguës.
+
 ## 1.0.1
 
 - Reconnaissance de « Village ensevelli », variante utilisée dans Ganymède, comme le Zaap « Village enseveli ».
