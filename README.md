@@ -17,12 +17,20 @@
   &nbsp; · &nbsp;
   <a href="#prise-en-main">Prise en main</a>
   &nbsp; · &nbsp;
+  <a href="docs/UTILISATION.md">Guide d'utilisation</a>
+  &nbsp; · &nbsp;
+  <a href="docs/COMPILATION.md">Compiler soi-même</a>
+  &nbsp; · &nbsp;
   <a href="https://github.com/molow159-boop/zaaps-dofus3/issues">Signaler un problème</a>
 </p>
 
 Retrouvez un zaap, préparez votre déplacement et copiez votre trajet sans ressaisir les coordonnées. **Zaaps Dofus 3** est un utilitaire portable en Rust pour **Windows 10/11 x64**, conçu pour accompagner les étapes affichées dans **Ganymède**.
 
-![Interface de Zaaps Dofus 3 : liste des zaaps et mode automatique activé](assets/screenshots/interface.jpg)
+<p align="center">
+  <img src="assets/screenshots/compact.jpg" alt="Vue compacte : étape reconnue, Zaap de Pandala, destination et boutons de copie" width="414">
+</p>
+
+Le compagnon reste discret à côté de Ganymède. **Afficher Zaaps** ouvre le gestionnaire dans une fenêtre séparée ; l'engrenage donne accès aux réglages.
 
 ## L'essentiel, dans une seule fenêtre
 
@@ -31,7 +39,7 @@ Retrouvez un zaap, préparez votre déplacement et copiez votre trajet sans ress
 | **45 zaaps intégrés** | Parcourez la liste et copiez une commande en un clic. |
 | **Recherche immédiate** | Retrouvez un zaap par son nom ou sa région. |
 | **Trajets Ganymède** | Récupérez le Zaap recommandé et les coordonnées de destination. |
-| **Cinq raccourcis configurables** | Choisissez vos touches pour le Zaap, le voyage et le trajet complet. |
+| **Cinq raccourcis configurables** | Choisissez vos touches pour les trois copies, Auto et l'affichage de la fenêtre. |
 | **Mode automatique** | Copiez une fois le trajet à chaque nouvelle étape reconnue. |
 | **Interface adaptable** | Redimensionnez librement la fenêtre ; les colonnes s'ajustent à sa largeur. |
 | **Mode compact mémorisé** | Gardez seulement l'étape, le trajet et les boutons de copie ; dépliez la liste au besoin. |
@@ -42,10 +50,15 @@ Retrouvez un zaap, préparez votre déplacement et copiez votre trajet sans ress
 
 ## En images
 
-| Recherche rapide | Raccourcis personnalisables |
+| Gestionnaire indépendant | Recherche rapide |
 | :---: | :---: |
-| [![Recherche des zaaps liés à Astrub](assets/screenshots/recherche.jpg)](assets/screenshots/recherche.jpg) | [![Réglages des trois raccourcis Ganymède](assets/screenshots/raccourcis.jpg)](assets/screenshots/raccourcis.jpg) |
-| Un nom ou une région suffit pour filtrer la liste. | Ctrl+J, Ctrl+K et Ctrl+L par défaut, modifiables dans les réglages. |
+| [![Gestionnaire des 45 Zaaps, version 1.1.3](assets/screenshots/interface.jpg)](assets/screenshots/interface.jpg) | [![Recherche des Zaaps liés à Astrub](assets/screenshots/recherche.jpg)](assets/screenshots/recherche.jpg) |
+| La liste complète s'ouvre sans agrandir le compagnon accroché. | Filtrez par nom, région ou coordonnées. |
+
+| Raccourcis et accrochage | Options de confort |
+| :---: | :---: |
+| [![Cinq raccourcis personnalisables et choix du côté d'accrochage](assets/screenshots/reglages-raccourcis.jpg)](assets/screenshots/reglages-raccourcis.jpg) | [![Son, presse-papiers, démarrage Windows et nouvelles versions](assets/screenshots/reglages-confort.jpg)](assets/screenshots/reglages-confort.jpg) |
+| Exemple de touches personnalisées ; les raccourcis par défaut figurent ci-dessous. | Choisissez les confirmations et les fonctions à activer. |
 
 ## Prise en main
 
@@ -53,7 +66,11 @@ Retrouvez un zaap, préparez votre déplacement et copiez votre trajet sans ress
 2. Ouvrez Ganymède sur votre guide, puis lancez **Zaaps Dofus 3.exe**.
 3. Cliquez sur un zaap ou utilisez un raccourci, puis collez la commande dans Dofus.
 
+Pour garder le compagnon au premier plan de votre guide, ouvrez l'engrenage, activez **Accrocher à Ganymède**, choisissez le côté et enregistrez. Le bouton **Afficher Zaaps** reste disponible pour retrouver la liste.
+
 **Aucune installation de Rust n'est nécessaire.** Le logiciel copie les commandes dans le presse-papiers ; vous gardez la main sur leur utilisation dans Dofus.
+
+Le [guide d'utilisation](docs/UTILISATION.md) détaille les boutons, l'accrochage, Auto, les réglages et les mises à jour. Les **sources complètes** sont consultables ici dans le dépôt et disponibles dans **Zaaps-Dofus3-1.1.3-Sources.zip** sur la Release.
 
 ## Vos raccourcis
 
@@ -69,7 +86,7 @@ Ouvrez les réglages avec l'icône d'engrenage pour personnaliser les touches. V
 
 ## Une présence discrète pendant vos guides
 
-La vue compacte affiche le numéro d'étape reconnu, le Zaap et la destination. Les boutons **Zaap**, **Travel** et **Trajet complet** utilisent les mêmes données vérifiées que les raccourcis. **Afficher les 45 Zaaps** ouvre le gestionnaire avec sa recherche ; **Revenir au mode compact** replie la liste. Le mode choisi est mémorisé.
+La vue compacte affiche le numéro d'étape reconnu, le Zaap et la destination. Les boutons **Zaap**, **Travel** et **Trajet complet** utilisent les mêmes données vérifiées que les raccourcis. Sans accrochage, **Afficher les 45 Zaaps** déplie la liste avec sa recherche ; **Revenir au mode compact** la replie. Le mode choisi est mémorisé.
 
 Pour réunir les deux fenêtres, cochez **Accrocher à Ganymède** et choisissez **En haut**, **En bas**, **À gauche** ou **À droite**. Le côté décrit la position de Zaaps par rapport à Ganymède. Déplacer l'une déplace l'autre ; les bords visibles restent accolés, sans l'espace des bordures invisibles de Windows. En haut et en bas, Zaaps prend automatiquement la largeur de Ganymède : redimensionnez Ganymède pour ajuster cette largeur et les bords de Zaaps pour sa hauteur. Sur les côtés, le haut des fenêtres est aligné et Zaaps conserve sa taille compacte. La taille de Ganymède n'est pas modifiée par l'accrochage. L'option et le côté sont mémorisés ; décochez l'option pour séparer les fenêtres.
 
@@ -124,8 +141,7 @@ L'exécutable n'est pas signé numériquement. Le fichier `SHA256.txt` de la Rel
 
 </details>
 
-<details>
-<summary><strong>Compiler depuis les sources</strong></summary>
+## Compiler depuis les sources
 
 Prérequis : **Rust 1.99.1**, cible `x86_64-pc-windows-msvc`, Visual Studio Build Tools C++ et Windows SDK. Conservez le fichier `Cargo.lock` fourni.
 
@@ -138,7 +154,7 @@ cargo build --release --locked
 
 Exécutable produit : `target\release\zaaps-dofus3.exe`.
 
-</details>
+Consultez le [tuto de compilation Windows](docs/COMPILATION.md) pour installer les prérequis et compiler pas à pas.
 
 ## Participer
 

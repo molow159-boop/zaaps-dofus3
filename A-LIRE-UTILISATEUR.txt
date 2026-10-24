@@ -72,4 +72,10 @@ Préférences : %APPDATA%\Zaaps Dofus 3\raccourcis.ini
 Téléchargements et sources :
 https://github.com/molow159-boop/zaaps-dofus3
 
+Guide d'utilisation :
+https://github.com/molow159-boop/zaaps-dofus3/blob/main/docs/UTILISATION.md
+
+Compiler soi-même :
+https://github.com/molow159-boop/zaaps-dofus3/blob/main/docs/COMPILATION.md
+
 Projet indépendant, sans affiliation à Ankama ni à l'équipe Ganymède.
