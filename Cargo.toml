@@ -28,4 +28,4 @@ strip = "symbols"
 application = "Zaaps Dofus 3"
 
 [target.'cfg(windows)'.build-dependencies]
-winresource = "=0.1.31"
+winresource = "=0.1.34"
