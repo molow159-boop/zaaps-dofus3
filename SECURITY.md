@@ -2,7 +2,7 @@
 
 ## Versions prises en charge
 
-La version 1.0.3 est la version actuelle du projet.
+La version 1.1.0 est la version actuelle du projet.
 
 ## Fonctionnement
 
@@ -11,6 +11,10 @@ La version 1.0.3 est la version actuelle du projet.
 - Copie des commandes dans le presse-papiers, sans exécution dans Dofus.
 - Préférences conservées localement dans `%APPDATA%\Zaaps Dofus 3\raccourcis.ini`.
 - Aucune connexion utilisateur ni mise à jour automatique intégrée.
+- Vérification facultative des nouvelles Releases stables par HTTPS vers l'API publique de GitHub, sans identifiant ni jeton ; aucun téléchargement ni installation automatique.
+- Démarrage Windows facultatif via une valeur propre au logiciel dans la clé Run de l'utilisateur courant.
+- Surveillance du presse-papiers après une copie du logiciel, sans conservation du contenu copié par les autres applications.
+- Diagnostic local avec aperçu avant copie ; aucune transmission automatique.
 
 Les fichiers `SHA256.txt` des Releases permettent de vérifier l'intégrité des téléchargements. L'exécutable n'est pas signé Authenticode.
 

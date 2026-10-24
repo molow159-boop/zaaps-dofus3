@@ -1,13 +1,25 @@
-ZAAPS DOFUS 3 — 1.0.3
+ZAAPS DOFUS 3 — 1.1.0
 Windows 10/11 x64
 
-1. Extraire entièrement l'archive.
-2. Ouvrir Ganymède sur le guide souhaité.
-3. Lancer « Zaaps Dofus 3.exe ».
+1. Fermer toute ancienne instance de Zaaps Dofus 3.
+2. Extraire entièrement l'archive.
+3. Ouvrir Ganymède sur le guide souhaité.
+4. Lancer « Zaaps Dofus 3.exe ».
 
 Ctrl+J : copier le Zaap recommandé.
 Ctrl+K : copier la destination /travel.
 Ctrl+L : copier le trajet complet disponible.
+Ctrl+Shift+A : suspendre / reprendre Auto.
+Ctrl+Shift+Z : afficher / masquer la fenêtre.
+
+La vue compacte affiche l'étape, le Zaap et la destination.
+« Afficher les 45 Zaaps » déplie le gestionnaire et sa recherche.
+Le mode compact est mémorisé au prochain lancement.
+
+Le bouton − réduit le logiciel près de l'horloge. Les raccourcis et la
+copie automatique restent actifs. Cliquez sur l'icône pour le retrouver.
+Clic droit : afficher, suspendre Auto, recopier le trajet ou quitter.
+Le bouton × ferme complètement l'application.
 
 Avec un Zaap et une destination : double /zaap puis /travel.
 Avec seulement un Zaapi ou sans Zaap : /travel seul si exploitable.
@@ -23,6 +35,20 @@ ne sont pas utilisées pour ce voyage.
 Auto copie à la prochaine nouvelle étape reconnue. L'étape présente
 à l'activation sert de référence et n'est pas copiée automatiquement.
 Les raccourcis se modifient dans les réglages.
+
+Réglages : confirmation visuelle, son léger ou silence ; avertissement
+si la commande copiée est remplacée ; lancement avec Windows facultatif
+et désactivé par défaut. Si vous activez ce lancement, placez d'abord
+le dossier à son emplacement définitif. Après un déplacement du dossier,
+enregistrez à nouveau les réglages pour actualiser l'emplacement.
+
+La vérification de version consulte GitHub et signale les nouvelles
+Releases stables. Aucun fichier n'est téléchargé ou installé automatiquement.
+Elle peut être désactivée ou déclenchée manuellement dans les réglages.
+
+Diagnostic : aperçu modifiable avant copie ; rien n'est envoyé
+automatiquement. Le texte complet du guide et le contenu remplacé
+du presse-papiers ne sont pas inclus.
 
 Le logiciel copie uniquement dans le presse-papiers. Coller manuellement
 dans Dofus. Aucune installation de Rust nécessaire pour utiliser l'EXE.

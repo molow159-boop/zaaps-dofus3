@@ -1,5 +1,16 @@
 # Historique des versions
 
+## 1.1.0
+
+- Vue compacte mémorisée avec numéro d'étape, Zaap, destination et trois boutons de copie ; gestionnaire complet dépliable.
+- Réduction près de l'horloge avec lecture Ganymède et raccourcis actifs ; menu pour afficher, suspendre Auto, recopier le trajet ou quitter.
+- Deux raccourcis configurables supplémentaires pour Auto et l'affichage de la fenêtre.
+- Confirmation de copie visuelle, sonore ou silencieuse, et avertissement lorsqu'une autre copie remplace la commande.
+- Démarrage avec Windows facultatif, réduit près de l'horloge.
+- Vérification des nouvelles versions GitHub avec téléchargement manuel.
+- Aperçu de diagnostic modifiable avant copie, sans envoi automatique.
+- Conservation des raccourcis existants, des 45 Zaaps, des alias et des règles de trajet dimensionnel.
+
 ## 1.0.3
 
 - Préparation du trajet vers la Tour des Voyageurs Dimensionnels en [-22,-24], via le Zaap Routes Rocailleuses en [-20,-20], lorsque la prochaine destination annoncée est Enutrosor, Srambad, Xélorium, Ecaflipus ou Osavora.

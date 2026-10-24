@@ -25,6 +25,14 @@ pub enum Action {
 }
 
 impl Step {
+    pub fn progress(&self) -> Option<&str> {
+        let label = self.identity.as_deref()?.strip_prefix("step:")?;
+        let (current, total) = label.split_once('/')?;
+        let current = current.parse::<u32>().ok()?;
+        let total = total.parse::<u32>().ok()?;
+        (current > 0 && current <= total).then_some(label)
+    }
+
     pub fn from_text(text: &str, known: &[Zaap]) -> Self {
         static PROGRESS: OnceLock<Regex> = OnceLock::new();
         let progress = PROGRESS.get_or_init(|| {

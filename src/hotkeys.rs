@@ -1,7 +1,5 @@
 use crate::commands::{Action, Step};
 use std::{
-    fs,
-    path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc, Arc, RwLock,
@@ -14,115 +12,7 @@ use windows::Win32::UI::{
     WindowsAndMessaging::{PeekMessageW, MSG, PM_REMOVE, WM_HOTKEY},
 };
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Shortcuts {
-    pub zaap: String,
-    pub travel: String,
-    pub combined: String,
-    pub automatic: bool,
-}
-
-impl Default for Shortcuts {
-    fn default() -> Self {
-        Self {
-            zaap: "Ctrl+J".into(),
-            travel: "Ctrl+K".into(),
-            combined: "Ctrl+L".into(),
-            automatic: false,
-        }
-    }
-}
-
-fn settings_path() -> PathBuf {
-    let folder = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
-    folder.join("Zaaps Dofus 3").join("raccourcis.ini")
-}
-
-impl Shortcuts {
-    pub fn load() -> Self {
-        let mut settings = Self::default();
-        let Ok(contents) = fs::read_to_string(settings_path()) else {
-            return settings;
-        };
-        for line in contents.trim_start_matches('\u{feff}').lines() {
-            let Some((field, value)) = line.split_once('=') else {
-                continue;
-            };
-            let value = value.trim();
-            if field.trim() == "automatic" {
-                settings.automatic = value.eq_ignore_ascii_case("on")
-                    || value == "1"
-                    || value.eq_ignore_ascii_case("true");
-                continue;
-            }
-            if parse_shortcut(value).is_none() {
-                continue;
-            }
-            match field.trim() {
-                "zaap" => settings.zaap = value.to_owned(),
-                "travel" => settings.travel = value.to_owned(),
-                "combined" => settings.combined = value.to_owned(),
-                _ => {}
-            }
-        }
-        if settings.zaap.eq_ignore_ascii_case(&settings.travel) {
-            settings.travel = if settings.zaap.eq_ignore_ascii_case("Ctrl+K") {
-                "Ctrl+J"
-            } else {
-                "Ctrl+K"
-            }
-            .into();
-        }
-        if settings.combined.eq_ignore_ascii_case(&settings.zaap)
-            || settings.combined.eq_ignore_ascii_case(&settings.travel)
-        {
-            for candidate in ["Ctrl+L", "Ctrl+M", "Ctrl+N", "Ctrl+O", "Ctrl+P"] {
-                if !candidate.eq_ignore_ascii_case(&settings.zaap)
-                    && !candidate.eq_ignore_ascii_case(&settings.travel)
-                {
-                    settings.combined = candidate.into();
-                    break;
-                }
-            }
-        }
-        settings
-    }
-
-    pub fn save(&self) -> Result<(), String> {
-        self.validate()?;
-        let path = settings_path();
-        fs::create_dir_all(path.parent().unwrap()).map_err(|e| e.to_string())?;
-        fs::write(
-            path,
-            format!(
-                "zaap={}\r\ntravel={}\r\ncombined={}\r\nautomatic={}\r\n",
-                self.zaap,
-                self.travel,
-                self.combined,
-                if self.automatic { "on" } else { "off" }
-            ),
-        )
-        .map_err(|e| e.to_string())
-    }
-
-    pub fn validate(&self) -> Result<(), String> {
-        let keys = [&self.zaap, &self.travel, &self.combined];
-        if keys.iter().any(|s| parse_shortcut(s).is_none()) {
-            return Err(
-                "Raccourci invalide : utilise Ctrl, Alt ou Shift avec A–Z, 0–9 ou F1–F12".into(),
-            );
-        }
-        if keys[0].eq_ignore_ascii_case(keys[1])
-            || keys[0].eq_ignore_ascii_case(keys[2])
-            || keys[1].eq_ignore_ascii_case(keys[2])
-        {
-            return Err("Choisis trois raccourcis différents".into());
-        }
-        Ok(())
-    }
-}
+pub use crate::settings::{Feedback, Shortcuts};
 
 pub fn parse_shortcut(text: &str) -> Option<(u32, u32)> {
     let parts: Vec<_> = text.split('+').map(str::trim).collect();
@@ -160,6 +50,9 @@ pub enum Notice {
     Copied(String),
     Info(String),
     Error(String),
+    ClipboardReplaced,
+    AutomaticChanged(bool),
+    WindowVisibility(bool),
 }
 
 fn copy_clipboard(text: &str) -> Result<(), String> {
@@ -184,7 +77,91 @@ pub fn copy(text: &str) -> Notice {
 pub enum Control {
     Pause,
     Configure(Shortcuts),
-    Automatic(bool),
+    ToggleAutomatic,
+    Copy(Action),
+    CopyText(String),
+    CopyDiagnostic(String),
+}
+
+#[derive(Default)]
+struct ClipboardWatch {
+    owned: Option<(String, u32)>,
+}
+
+impl ClipboardWatch {
+    fn copied(&mut self, command: String, sequence: u32) {
+        self.owned = Some((command, sequence));
+    }
+    fn changed(&self, sequence: u32) -> bool {
+        sequence != 0
+            && self
+                .owned
+                .as_ref()
+                .is_some_and(|(_, previous)| *previous != sequence)
+    }
+    fn observe(&mut self, sequence: u32, content: Result<Option<String>, ()>) -> bool {
+        if !self.changed(sequence) {
+            return false;
+        }
+        let Ok(content) = content else { return false };
+        if let Some((command, previous)) = &mut self.owned {
+            if content.as_ref() == Some(command) {
+                *previous = sequence;
+                return false;
+            }
+        }
+        self.owned = None;
+        true
+    }
+}
+
+fn report_copy(
+    command: &str,
+    config: &Shortcuts,
+    watch: &mut ClipboardWatch,
+    notifications: &mpsc::Sender<Notice>,
+    tray: Option<&crate::tray::Tray>,
+) {
+    let notice = copy(command);
+    if matches!(notice, Notice::Copied(_)) {
+        let sequence =
+            unsafe { windows::Win32::System::DataExchange::GetClipboardSequenceNumber() };
+        watch.copied(command.to_owned(), sequence);
+        if let Some(tray) = tray {
+            tray.tip(format!("Zaaps Dofus 3 — copié : {command}"));
+            if config.feedback == Feedback::Visual {
+                tray.notify("Commande copiée", command);
+            }
+        }
+        if config.feedback == Feedback::Sound {
+            let _ = unsafe {
+                windows::Win32::System::Diagnostics::Debug::MessageBeep(
+                    windows::Win32::UI::WindowsAndMessaging::MB_OK,
+                )
+            };
+        }
+    }
+    let _ = notifications.send(notice);
+}
+
+fn set_automatic(
+    config: &mut Shortcuts,
+    automatic: &mut AutoCopy,
+    enabled: bool,
+    notifications: &mpsc::Sender<Notice>,
+) {
+    let mut next = config.clone();
+    next.automatic = enabled;
+    match next.save() {
+        Ok(()) => {
+            *config = next;
+            automatic.set_enabled(enabled);
+            let _ = notifications.send(Notice::AutomaticChanged(enabled));
+        }
+        Err(error) => {
+            let _ = notifications.send(Notice::Error(format!("Mode Auto non modifié : {error}")));
+        }
+    }
 }
 
 // Un changement doit être confirmé par deux lectures différentes de Ganymède.
@@ -259,123 +236,227 @@ pub fn start(
     notifications: mpsc::Sender<Notice>,
     stop: Arc<AtomicBool>,
     context: eframe::egui::Context,
+    tray: Option<crate::tray::Tray>,
 ) -> mpsc::Sender<Control> {
     let (settings_tx, settings_rx) = mpsc::channel();
-    thread::Builder::new()
-        .name("global-shortcuts".into())
-        .spawn(move || {
-            let mut config = shortcuts;
-            let mut automatic = AutoCopy::new(config.automatic);
-            let mut active = [false; 3];
-            let register = |keys: &Shortcuts, slots: &mut [bool; 3]| {
-                for (index, shortcut) in [&keys.zaap, &keys.travel, &keys.combined]
-                    .iter()
-                    .enumerate()
-                {
-                    if let Some((flags, vk)) = parse_shortcut(shortcut) {
-                        slots[index] = unsafe {
-                            RegisterHotKey(
-                                None,
-                                0x52A1 + index as i32,
-                                HOT_KEY_MODIFIERS(flags),
-                                vk,
-                            )
-                            .is_ok()
-                        };
+    thread::Builder::new().name("global-shortcuts".into()).spawn(move || {
+        let mut config = shortcuts;
+        let mut automatic = AutoCopy::new(config.automatic);
+        let mut watch = ClipboardWatch::default();
+        let mut active = [false; 5];
+        let register = |keys: &Shortcuts, slots: &mut [bool; 5]| {
+            for (index, shortcut) in keys.keys().iter().enumerate() {
+                if let Some((flags, vk)) = parse_shortcut(shortcut) {
+                    slots[index] = unsafe { RegisterHotKey(None, 0x52A1 + index as i32,
+                        HOT_KEY_MODIFIERS(flags), vk).is_ok() };
+                }
+            }
+        };
+        let unregister = |slots: &mut [bool; 5]| {
+            for (index, registered) in slots.iter_mut().enumerate() {
+                if *registered { let _ = unsafe { UnregisterHotKey(None, 0x52A1 + index as i32) }; }
+                *registered = false;
+            }
+        };
+        register(&config, &mut active);
+        if !active.iter().all(|item| *item) {
+            let failed: Vec<_> = config.keys().into_iter().zip(active).filter_map(|(key, ok)| (!ok).then_some(key)).collect();
+            let _ = notifications.send(Notice::Error(format!("Raccourcis indisponibles : {}", failed.join(", "))));
+            context.request_repaint();
+        }
+        let mut msg = MSG::default();
+        let mut paused = false;
+        let mut last_check = std::time::Instant::now();
+        while !stop.load(Ordering::Relaxed) {
+            while let Ok(next) = settings_rx.try_recv() {
+                match next {
+                    Control::ToggleAutomatic => {
+                        let enabled = !config.automatic;
+                        set_automatic(&mut config, &mut automatic, enabled, &notifications);
+                    }
+                    Control::Pause => { unregister(&mut active); paused = true; }
+                    Control::Configure(value) => {
+                        unregister(&mut active);
+                        automatic.set_enabled(value.automatic);
+                        config = value;
+                        paused = false;
+                        register(&config, &mut active);
+                        if !active.iter().all(|item| *item) {
+                            let failed: Vec<_> = config.keys().into_iter().zip(active).filter_map(|(key, ok)| (!ok).then_some(key)).collect();
+                            let _ = notifications.send(Notice::Error(format!("Raccourcis indisponibles : {}", failed.join(", "))));
+                        }
+                    }
+                    Control::Copy(action) => {
+                        let command = cache.read().map_err(|_| "Données indisponibles".to_owned())
+                            .and_then(|step| step.command(action));
+                        match command {
+                            Ok(command) => report_copy(&command, &config, &mut watch, &notifications, tray.as_ref()),
+                            Err(error) => { let _ = notifications.send(Notice::Error(error)); }
+                        }
+                    }
+                    Control::CopyText(command) => report_copy(&command, &config, &mut watch, &notifications, tray.as_ref()),
+                    Control::CopyDiagnostic(text) => {
+                        if copy_clipboard(&text).is_ok() {
+                            watch.owned = None;
+                            let _ = notifications.send(Notice::Info("Diagnostic copié — prêt à partager".into()));
+                        } else { let _ = notifications.send(Notice::Error("Presse-papiers indisponible".into())); }
                     }
                 }
-            };
-            register(&config, &mut active);
-            if !active.iter().all(|item| *item) {
-                let _ = notifications.send(Notice::Error(
-                    "Un raccourci est déjà utilisé : change-le dans les réglages".into(),
-                ));
                 context.request_repaint();
             }
-            let mut msg = MSG::default();
-            let mut paused = false;
-            while !stop.load(Ordering::Relaxed) {
-                while let Ok(next) = settings_rx.try_recv() {
-                    match next {
-                        Control::Automatic(enabled) => {
-                            automatic.set_enabled(enabled);
-                            config.automatic = enabled;
-                        }
-                        Control::Pause => {
-                            for (index, registered) in active.iter().enumerate() {
-                                if *registered {
-                                    let _ =
-                                        unsafe { UnregisterHotKey(None, 0x52A1 + index as i32) };
-                                }
-                            }
-                            active = [false; 3];
-                            paused = true;
-                        }
-                        Control::Configure(value) => {
-                            for (index, registered) in active.iter().enumerate() {
-                                if *registered {
-                                    let _ =
-                                        unsafe { UnregisterHotKey(None, 0x52A1 + index as i32) };
-                                }
-                            }
-                            active = [false; 3];
-                            automatic.set_enabled(value.automatic);
-                            config = value;
-                            paused = false;
-                            register(&config, &mut active);
-                            if !active.iter().all(|item| *item) {
-                                let _ = notifications
-                                    .send(Notice::Error("Un raccourci est indisponible".into()));
-                                context.request_repaint();
-                            }
-                        }
+            if !paused {
+                if let Ok(state) = cache.read() {
+                    if let Some(command) = automatic.observe(&state) {
+                        report_copy(&command, &config, &mut watch, &notifications, tray.as_ref());
+                        context.request_repaint();
                     }
-                }
-                if !paused {
-                    if let Ok(state) = cache.read() {
-                        if let Some(command) = automatic.observe(&state) {
-                            let notice = copy(&command);
-                            let _ = notifications.send(notice);
-                            context.request_repaint();
-                        }
-                    }
-                }
-                while unsafe { PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() } {
-                    if msg.message != WM_HOTKEY || paused {
-                        continue;
-                    }
-                    let action = match msg.wParam.0 as i32 {
-                        0x52A1 => Action::Zaap,
-                        0x52A2 => Action::Travel,
-                        0x52A3 => Action::Combined,
-                        _ => continue,
-                    };
-                    let command = cache
-                        .read()
-                        .map_err(|_| "Données indisponibles".to_owned())
-                        .and_then(|state| state.command(action));
-                    let notice = match command {
-                        Ok(command) => copy(&command),
-                        Err(message) => Notice::Error(message),
-                    };
-                    let _ = notifications.send(notice);
-                    context.request_repaint();
-                }
-                thread::sleep(Duration::from_millis(12));
-            }
-            for (index, registered) in active.iter().enumerate() {
-                if *registered {
-                    let _ = unsafe { UnregisterHotKey(None, 0x52A1 + index as i32) };
                 }
             }
-        })
-        .expect("impossible de démarrer les raccourcis Windows");
+            while unsafe { PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() } {
+                if msg.message != WM_HOTKEY || paused { continue; }
+                match msg.wParam.0 as i32 {
+                    0x52A4 => {
+                        let enabled = !config.automatic;
+                        set_automatic(&mut config, &mut automatic, enabled, &notifications);
+                    }
+                    0x52A5 => {
+                        let visible = crate::desktop::toggle_window(tray.as_ref().is_some_and(crate::tray::Tray::available));
+                        let _ = notifications.send(Notice::WindowVisibility(visible));
+                    }
+                    id @ 0x52A1..=0x52A3 => {
+                        let action = match id { 0x52A1 => Action::Zaap, 0x52A2 => Action::Travel, _ => Action::Combined };
+                        let command = cache.read().map_err(|_| "Données indisponibles".to_owned())
+                            .and_then(|state| state.command(action));
+                        match command {
+                            Ok(command) => report_copy(&command, &config, &mut watch, &notifications, tray.as_ref()),
+                            Err(error) => { let _ = notifications.send(Notice::Error(error)); }
+                        }
+                    }
+                    _ => {},
+                }
+                context.request_repaint();
+            }
+            if config.watch_clipboard && last_check.elapsed() >= Duration::from_millis(150) {
+                last_check = std::time::Instant::now();
+                let sequence = unsafe { windows::Win32::System::DataExchange::GetClipboardSequenceNumber() };
+                if watch.changed(sequence) {
+                    let content = arboard::Clipboard::new().and_then(|mut clipboard| clipboard.get_text());
+                    let content = match content { Ok(text) => Ok(Some(text)),
+                        Err(arboard::Error::ContentNotAvailable) => Ok(None), Err(_) => Err(()) };
+                    if watch.observe(sequence, content) {
+                        let _ = notifications.send(Notice::ClipboardReplaced);
+                        if config.feedback == Feedback::Sound {
+                            let _ = unsafe { windows::Win32::System::Diagnostics::Debug::MessageBeep(
+                                windows::Win32::UI::WindowsAndMessaging::MB_ICONEXCLAMATION) };
+                        }
+                        if let Some(tray) = &tray {
+                            tray.tip("Zaaps Dofus 3 — commande remplacée dans le presse-papiers");
+                            if config.feedback == Feedback::Visual {
+                                tray.notify("Commande remplacée", "Une autre copie a remplacé la commande. Ouvrez Zaaps pour recopier le trajet courant.");
+                            }
+                        }
+                        context.request_repaint();
+                    }
+                }
+            }
+            thread::sleep(Duration::from_millis(12));
+        }
+        unregister(&mut active);
+    }).expect("impossible de démarrer les raccourcis Windows");
     settings_tx
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    #[ignore = "utilise le presse-papiers et les raccourcis Windows réels"]
+    fn native_background_copy_and_clipboard_replacement() {
+        let directory = crate::data::embedded().unwrap();
+        let cache = Arc::new(RwLock::new(Step::from_text(
+            "630/774\nEnsuite allez en Srambad en [8,3]",
+            &directory,
+        )));
+        let stop = Arc::new(AtomicBool::new(false));
+        struct Cleanup(Arc<AtomicBool>);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                self.0.store(true, Ordering::Relaxed);
+                thread::sleep(Duration::from_millis(50));
+            }
+        }
+        let _cleanup = Cleanup(stop.clone());
+        let (tx, rx) = mpsc::channel();
+        let config = Shortcuts {
+            zaap: "Ctrl+Alt+Shift+F6".into(),
+            travel: "Ctrl+Alt+Shift+F7".into(),
+            combined: "Ctrl+Alt+Shift+F8".into(),
+            toggle_auto: "Ctrl+Alt+Shift+F9".into(),
+            toggle_window: "Ctrl+Alt+Shift+F10".into(),
+            feedback: Feedback::Silent,
+            ..Shortcuts::default()
+        };
+        let controls = start(
+            cache.clone(),
+            config,
+            tx,
+            stop,
+            eframe::egui::Context::default(),
+            None,
+        );
+        controls.send(Control::Copy(Action::Combined)).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        loop {
+            assert!(std::time::Instant::now() < deadline);
+            if let Notice::Copied(command) = rx.recv_timeout(Duration::from_secs(2)).unwrap() {
+                assert_eq!(command, "/zaap -20,-20; /zaap -20,-20; /travel -22 -24");
+                break;
+            }
+        }
+        arboard::Clipboard::new()
+            .unwrap()
+            .set_text("Texte de remplacement du test Windows".to_owned())
+            .unwrap();
+        loop {
+            assert!(std::time::Instant::now() < deadline);
+            if matches!(
+                rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+                Notice::ClipboardReplaced
+            ) {
+                break;
+            }
+        }
+        // Recopy must resolve the current step rather than restoring the last command.
+        *cache.write().unwrap() = Step::from_text(
+            "631/774\nEnsuite allez en [7,20]\nZaap du Rivage sufokien",
+            &directory,
+        );
+        controls.send(Control::Copy(Action::Combined)).unwrap();
+        if let Notice::Copied(command) = rx.recv_timeout(Duration::from_secs(2)).unwrap() {
+            assert_eq!(command, "/zaap 10,22; /zaap 10,22; /travel 7 20");
+        } else {
+            panic!("La copie du trajet courant a échoué");
+        }
+        *cache.write().unwrap() = Step::unavailable("Fenêtre fermée");
+        controls.send(Control::Copy(Action::Combined)).unwrap();
+        assert!(matches!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            Notice::Error(_)
+        ));
+    }
+    #[test]
+    fn clipboard_changes_warn_once_and_never_restore_old_content() {
+        let mut watch = ClipboardWatch::default();
+        watch.copied("/travel 1 2".into(), 10);
+        assert!(!watch.observe(10, Ok(Some("unrelated".into()))));
+        assert!(!watch.observe(11, Err(()))); // clipboard temporarily busy
+        assert!(!watch.observe(11, Ok(Some("/travel 1 2".into()))));
+        assert!(watch.observe(12, Ok(Some("autre copie".into()))));
+        assert!(!watch.observe(13, Ok(Some("encore une copie".into()))));
+        assert!(watch.owned.is_none());
+        watch.copied("/travel 3 4".into(), 14);
+        assert!(watch.observe(15, Ok(None))); // image or files instead of text
+    }
     #[test]
     fn validates_shortcuts() {
         assert_eq!(parse_shortcut("Ctrl+J"), Some((0x4002, 0x4A)));

@@ -66,7 +66,7 @@ unsafe extern "system" fn select_window(window: WindowHandle, context: isize) ->
     1
 }
 
-fn find_window() -> isize {
+pub(crate) fn find_window() -> isize {
     let mut search = WindowSearch {
         process_id: std::process::id(),
         found: 0,

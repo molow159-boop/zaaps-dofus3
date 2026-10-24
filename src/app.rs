@@ -1,8 +1,9 @@
 use crate::{
-    commands::Step,
+    commands::{Action, Step},
     data::{self, Zaap},
-    ganymede,
-    hotkeys::{self, Control, Notice, Shortcuts},
+    desktop, diagnostics, ganymede,
+    hotkeys::{self, Control, Feedback, Notice, Shortcuts},
+    tray, updates,
     window_corners::WindowCorners,
 };
 use eframe::egui::{
@@ -97,6 +98,22 @@ pub struct ZaapsApp {
     maximized: bool,
     icons: Icons,
     window_corners: WindowCorners,
+    cache: Arc<RwLock<Step>>,
+    tray: Option<tray::Tray>,
+    tray_events: Option<mpsc::Receiver<tray::Event>>,
+    update_requests: mpsc::Sender<updates::Request>,
+    update_notices: mpsc::Receiver<updates::ResultNotice>,
+    latest_release: Option<updates::Release>,
+    update_status: String,
+    manual_update_check: bool,
+    hidden: bool,
+    exiting: bool,
+    initial_visibility_pending: bool,
+    clipboard_replaced: bool,
+    diagnostic_open: bool,
+    diagnostic_text: String,
+    compact_size: Vec2,
+    directory_size: Vec2,
 }
 
 fn text(value: impl Into<String>, size: f32, color: Color32) -> RichText {
@@ -158,16 +175,31 @@ impl ZaapsApp {
         };
         let stop = Arc::new(AtomicBool::new(false));
         let cache = Arc::new(RwLock::new(Step::default()));
-        let shortcuts = Shortcuts::load();
+        let mut shortcuts = Shortcuts::load();
+        shortcuts.startup = desktop::startup_registered();
         let (tx, notices) = mpsc::channel();
+        let (tray, tray_events, tray_error) = match tray::start(cc.egui_ctx.clone(), stop.clone()) {
+            Ok((icon, events)) => (Some(icon), Some(events), None),
+            Err(error) => (None, None, Some(error)),
+        };
+        let (update_requests, update_notices) = updates::start(
+            shortcuts.check_updates,
+            cc.egui_ctx.clone(),
+            stop.clone(),
+            tray.clone(),
+        );
         ganymede::start(Arc::clone(&cache), directory.clone(), Arc::clone(&stop));
         let hotkey_settings = hotkeys::start(
-            cache,
+            cache.clone(),
             shortcuts.clone(),
             tx,
             Arc::clone(&stop),
             cc.egui_ctx.clone(),
+            tray.clone(),
         );
+        if let Some(tray) = &tray {
+            tray.bind_controls(hotkey_settings.clone());
+        }
         Self {
             entries: directory,
             query: String::new(),
@@ -175,7 +207,9 @@ impl ZaapsApp {
             shortcuts,
             settings_open: false,
             recording: None,
-            toast: data_error.unwrap_or_else(|| "Prêt à copier".into()),
+            toast: data_error
+                .or(tray_error)
+                .unwrap_or_else(|| "Prêt à copier".into()),
             success: false,
             toast_time: Instant::now(),
             notices,
@@ -184,6 +218,22 @@ impl ZaapsApp {
             maximized: false,
             icons: Icons::new(&cc.egui_ctx),
             window_corners: WindowCorners::default(),
+            cache,
+            tray,
+            tray_events,
+            update_requests,
+            update_notices,
+            latest_release: None,
+            update_status: "Vérification disponible dans les réglages".into(),
+            manual_update_check: false,
+            hidden: false,
+            exiting: false,
+            initial_visibility_pending: std::env::args().any(|arg| arg == "--tray"),
+            clipboard_replaced: false,
+            diagnostic_open: false,
+            diagnostic_text: String::new(),
+            compact_size: Vec2::new(460.0, 360.0),
+            directory_size: Vec2::new(960.0, 750.0),
         }
     }
 
@@ -192,43 +242,43 @@ impl ZaapsApp {
             Notice::Copied(command) => {
                 self.toast = format!("Commande copiée !  {command}");
                 self.success = true;
+                self.clipboard_replaced = false;
             }
             Notice::Info(message) => {
                 self.toast = message;
-                self.success = true;
+                self.success = false;
             }
             Notice::Error(message) => {
                 self.toast = message;
                 self.success = false;
             }
+            Notice::ClipboardReplaced => {
+                self.clipboard_replaced = true;
+                self.toast = "Commande remplacée dans le presse-papiers".into();
+                self.success = false;
+            }
+            Notice::AutomaticChanged(enabled) => {
+                self.shortcuts.automatic = enabled;
+                self.draft.automatic = enabled;
+                self.toast = if enabled {
+                    "Auto activé — copie à la prochaine étape"
+                } else {
+                    "Auto suspendu"
+                }
+                .into();
+                self.success = false;
+            }
+            Notice::WindowVisibility(_) => return,
         }
         self.toast_time = Instant::now();
     }
 
     fn copy(&mut self, command: String) {
-        self.show_notice(hotkeys::copy(&command));
+        let _ = self.hotkey_settings.send(Control::CopyText(command));
     }
 
     fn toggle_automatic(&mut self) {
-        self.shortcuts.automatic = !self.shortcuts.automatic;
-        match self.shortcuts.save() {
-            Ok(()) => {
-                self.draft.automatic = self.shortcuts.automatic;
-                let _ = self
-                    .hotkey_settings
-                    .send(Control::Automatic(self.shortcuts.automatic));
-                let message = if self.shortcuts.automatic {
-                    "Mode automatique activé — copie à la prochaine étape"
-                } else {
-                    "Mode automatique désactivé"
-                };
-                self.show_notice(Notice::Info(message.into()));
-            }
-            Err(error) => {
-                self.shortcuts.automatic = !self.shortcuts.automatic;
-                self.show_notice(Notice::Error(format!("Réglages non enregistrés : {error}")));
-            }
-        }
+        let _ = self.hotkey_settings.send(Control::ToggleAutomatic);
     }
 
     fn begin_settings(&mut self) {
@@ -247,13 +297,35 @@ impl ZaapsApp {
     }
 
     fn save_settings(&mut self) {
+        if let Err(error) = self.draft.validate() {
+            self.show_notice(Notice::Error(error));
+            return;
+        }
+        let changed_startup = self.draft.startup != self.shortcuts.startup
+            || (self.draft.startup && !desktop::startup_enabled());
         match self.draft.save() {
             Ok(()) => {
+                if changed_startup {
+                    if let Err(error) = desktop::set_startup(self.draft.startup) {
+                        let rollback = self.shortcuts.save();
+                        self.show_notice(Notice::Error(if rollback.is_ok() {
+                            error
+                        } else {
+                            format!("{error}. Les préférences n'ont pas pu être restaurées.")
+                        }));
+                        return;
+                    }
+                }
                 self.shortcuts = self.draft.clone();
+                let _ = self
+                    .update_requests
+                    .send(updates::Request::Enabled(self.shortcuts.check_updates));
                 self.close_settings();
-                self.show_notice(Notice::Info("Raccourcis enregistrés".into()));
+                self.show_notice(Notice::Info("Réglages enregistrés".into()));
             }
-            Err(error) => self.show_notice(Notice::Error(error)),
+            Err(error) => {
+                self.show_notice(Notice::Error(error));
+            }
         }
     }
 
@@ -302,7 +374,9 @@ impl ZaapsApp {
             match index {
                 0 => self.draft.zaap = key,
                 1 => self.draft.travel = key,
-                _ => self.draft.combined = key,
+                2 => self.draft.combined = key,
+                3 => self.draft.toggle_auto = key,
+                _ => self.draft.toggle_window = key,
             }
             self.recording = None;
         }
@@ -314,12 +388,14 @@ impl ZaapsApp {
         }
         self.record_key(ctx);
         let mut open = true;
-        egui::Window::new("Raccourcis Ganymède")
+        egui::Window::new("Réglages")
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
-            .default_width(400.0)
-            .max_width(480.0)
+            .default_width(380.0)
+            .max_width(440.0)
+            .max_height((ctx.screen_rect().height() - 45.0).max(200.0))
+            .vscroll(false)
             .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
             .frame(
                 egui::Frame::none()
@@ -330,41 +406,91 @@ impl ZaapsApp {
             )
             .show(ctx, |ui| {
                 let width = ui.available_width().max(250.0);
-                ui.label(text(
-                    "Clique sur un raccourci puis appuie sur les touches.",
-                    12.5,
-                    MUTED,
-                ));
-                ui.add_space(12.0);
-                let fields = [
-                    ("Zaap recommandé", self.draft.zaap.clone()),
-                    ("Coordonnées de quête", self.draft.travel.clone()),
-                    ("2 zaaps + trajet", self.draft.combined.clone()),
-                ];
-                for (index, (label, value)) in fields.iter().enumerate() {
-                    let line = if self.recording == Some(index) {
-                        format!("{label} : appuie sur les touches…")
-                    } else {
-                        format!("{label} : {value}")
-                    };
-                    if ui
-                        .add_sized(
-                            [width, 39.0],
-                            egui::Button::new(text(line, 12.5, WHITE))
-                                .fill(if self.recording == Some(index) {
-                                    Color32::from_rgb(43, 99, 68)
-                                } else {
-                                    CARD
-                                })
-                                .stroke(Stroke::new(1.0_f32, BORDER))
-                                .rounding(7.0),
-                        )
-                        .clicked()
-                    {
-                        self.recording = Some(index);
-                    }
-                    ui.add_space(6.0);
-                }
+                egui::ScrollArea::vertical()
+                    .id_salt("settings-scroll")
+                    .max_height((ctx.screen_rect().height() - 160.0).clamp(100.0, 510.0))
+                    .show(ui, |ui| {
+                        ui.label(text(
+                            "Clique sur un raccourci puis appuie sur les touches.",
+                            12.5,
+                            MUTED,
+                        ));
+                        ui.add_space(12.0);
+                        let fields = [
+                            ("Zaap recommandé", self.draft.zaap.clone()),
+                            ("Coordonnées de quête", self.draft.travel.clone()),
+                            ("2 zaaps + trajet", self.draft.combined.clone()),
+                            ("Suspendre / reprendre Auto", self.draft.toggle_auto.clone()),
+                            ("Afficher / masquer", self.draft.toggle_window.clone()),
+                        ];
+                        for (index, (label, value)) in fields.iter().enumerate() {
+                            let line = if self.recording == Some(index) {
+                                format!("{label} : appuie sur les touches…")
+                            } else {
+                                format!("{label} : {value}")
+                            };
+                            if ui
+                                .add_sized(
+                                    [width, 39.0],
+                                    egui::Button::new(text(line, 12.5, WHITE))
+                                        .fill(if self.recording == Some(index) {
+                                            Color32::from_rgb(43, 99, 68)
+                                        } else {
+                                            CARD
+                                        })
+                                        .stroke(Stroke::new(1.0_f32, BORDER))
+                                        .rounding(7.0),
+                                )
+                                .clicked()
+                            {
+                                self.recording = Some(index);
+                            }
+                            ui.add_space(6.0);
+                        }
+                        ui.separator();
+                        ui.label(text("Confirmation de copie", 13.0, WHITE));
+                        ui.horizontal_wrapped(|ui| {
+                            ui.selectable_value(
+                                &mut self.draft.feedback,
+                                Feedback::Visual,
+                                "Visuelle",
+                            );
+                            ui.selectable_value(
+                                &mut self.draft.feedback,
+                                Feedback::Sound,
+                                "Son léger",
+                            );
+                            ui.selectable_value(
+                                &mut self.draft.feedback,
+                                Feedback::Silent,
+                                "Silence",
+                            );
+                        });
+                        ui.checkbox(
+                            &mut self.draft.watch_clipboard,
+                            "Avertir si la commande copiée est remplacée",
+                        );
+                        ui.checkbox(
+                            &mut self.draft.startup,
+                            "Lancer avec Windows, près de l'horloge",
+                        );
+                        ui.checkbox(
+                            &mut self.draft.check_updates,
+                            "Signaler les nouvelles versions sur GitHub",
+                        );
+                        ui.label(text(
+                            "Aucune installation automatique de mise à jour.",
+                            11.0,
+                            MUTED,
+                        ));
+                        if ui.button("Vérifier la version maintenant").clicked() {
+                            self.manual_update_check = true;
+                            self.update_status = "Vérification en cours…".into();
+                            let _ = self.update_requests.send(updates::Request::Check);
+                        }
+                        ui.label(text(&self.update_status, 11.0, MUTED));
+                        ui.hyperlink_to("Voir les téléchargements", updates::RELEASES_URL);
+                    });
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     if ui
@@ -395,17 +521,16 @@ impl ZaapsApp {
             .frame(
                 egui::Frame::none()
                     .fill(BAR)
-                    .inner_margin(egui::Margin::symmetric(13.0, 6.0)),
+                    .inner_margin(egui::Margin::symmetric(10.0, 6.0)),
             )
             .show(ctx, |ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
+                ui.spacing_mut().item_spacing.x = 3.0;
                 ui.horizontal(|ui| {
-                    ui.add(egui::Image::new((self.icons.brand.id(), Vec2::splat(32.0))));
-                    ui.add_space(3.0);
-                    ui.label(text("Zaaps Dofus 3", 19.0, WHITE).strong());
-                    let drag_space = (ui.available_width() - 244.0).max(4.0);
+                    ui.add(egui::Image::new((self.icons.brand.id(), Vec2::splat(28.0))));
+                    ui.label(text("Zaaps Dofus 3", 16.0, WHITE).strong());
+                    let controls = if self.shortcuts.compact { 183.0 } else { 217.0 };
                     let drag = ui.add_sized(
-                        [drag_space, 34.0],
+                        [(ui.available_width() - controls).max(1.0), 30.0],
                         egui::Label::new("").sense(Sense::click_and_drag()),
                     );
                     if drag.drag_started() {
@@ -414,51 +539,316 @@ impl ZaapsApp {
                     if drag.double_clicked() {
                         self.switch_maximize(ctx);
                     }
-                    let auto_label = if self.shortcuts.automatic {
-                        "Auto : ON"
-                    } else {
-                        "Auto : OFF"
-                    };
-                    let auto_color = if self.shortcuts.automatic {
-                        Color32::from_rgb(39, 111, 69)
-                    } else {
-                        CARD
-                    };
                     if ui
                         .add_sized(
-                            [96.0, 30.0],
-                            egui::Button::new(text(auto_label, 12.0, WHITE))
-                                .fill(auto_color)
-                                .rounding(7.0),
+                            [78.0, 29.0],
+                            egui::Button::new(text(
+                                if self.shortcuts.automatic {
+                                    "Auto : ON"
+                                } else {
+                                    "Auto : OFF"
+                                },
+                                12.0,
+                                WHITE,
+                            ))
+                            .fill(if self.shortcuts.automatic {
+                                Color32::from_rgb(39, 111, 69)
+                            } else {
+                                CARD
+                            })
+                            .rounding(7.0),
                         )
-                        .on_hover_text(
-                            "Copier le trajet disponible à chaque nouvelle étape Ganymède",
-                        )
+                        .on_hover_text(format!(
+                            "Suspendre / reprendre : {}",
+                            self.shortcuts.toggle_auto
+                        ))
                         .clicked()
                     {
                         self.toggle_automatic();
                     }
-                    if image_button(ui, &self.icons.gear, "Configurer les raccourcis").clicked() {
+                    if image_button(ui, &self.icons.gear, "Réglages").clicked() {
                         self.begin_settings();
                     }
-                    if title_button(ui, "−", "Réduire").clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+                    if title_button(ui, "−", "Réduire près de l'horloge").clicked() {
+                        self.hide(ctx);
                     }
-                    if title_button(ui, "□", "Agrandir ou restaurer").clicked() {
+                    if !self.shortcuts.compact
+                        && title_button(ui, "□", "Agrandir ou restaurer").clicked()
+                    {
                         self.switch_maximize(ctx);
                     }
-                    if title_button(ui, "×", "Fermer").clicked() {
-                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    if title_button(ui, "×", "Quitter l'application").clicked() {
+                        self.quit(ctx);
                     }
                 });
-                ui.horizontal(|ui| {
-                    ui.add_space(43.0);
-                    ui.label(text(
-                        "Clique sur un zaap pour copier la commande",
+            });
+    }
+
+    fn tray_available(&self) -> bool {
+        self.tray.as_ref().is_some_and(tray::Tray::available)
+    }
+
+    fn hide(&mut self, ctx: &egui::Context) {
+        if self.settings_open {
+            self.close_settings();
+        }
+        self.diagnostic_open = false;
+        if self.tray_available() {
+            self.hidden = true;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        } else {
+            self.hidden = false;
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(true));
+            self.show_notice(Notice::Info(
+                "Icône indisponible : réduction dans la barre des tâches".into(),
+            ));
+        }
+    }
+
+    fn show(&mut self, ctx: &egui::Context) {
+        self.hidden = false;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+    }
+
+    fn quit(&mut self, ctx: &egui::Context) {
+        self.exiting = true;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+    }
+
+    fn toggle_compact(&mut self, ctx: &egui::Context) {
+        let size = ctx.screen_rect().size();
+        if self.shortcuts.compact {
+            self.compact_size = size;
+        } else {
+            self.directory_size = size;
+        }
+        self.shortcuts.compact = !self.shortcuts.compact;
+        if let Err(error) = self.shortcuts.save() {
+            self.shortcuts.compact = !self.shortcuts.compact;
+            self.show_notice(Notice::Error(error));
+            return;
+        }
+        self.draft.compact = self.shortcuts.compact;
+        let _ = self
+            .hotkey_settings
+            .send(Control::Configure(self.shortcuts.clone()));
+        self.maximized = false;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(
+            if self.shortcuts.compact {
+                self.compact_size
+            } else {
+                self.directory_size
+            },
+        ));
+    }
+
+    fn copy_action(&self, action: Action) {
+        let _ = self.hotkey_settings.send(Control::Copy(action));
+    }
+
+    fn open_diagnostic(&mut self) {
+        if let Ok(step) = self.cache.read() {
+            self.diagnostic_text = diagnostics::summary(
+                &step,
+                &self.shortcuts,
+                self.tray_available(),
+                self.clipboard_replaced,
+            );
+        }
+        self.diagnostic_open = true;
+    }
+
+    fn diagnostic(&mut self, ctx: &egui::Context) {
+        if !self.diagnostic_open {
+            return;
+        }
+        let mut open = true;
+        egui::Window::new("Diagnostic — aperçu avant partage").open(&mut open)
+            .collapsible(false).default_width(390.0)
+            .max_height((ctx.screen_rect().height() - 45.0).max(210.0))
+            .vscroll(true).anchor(Align2::CENTER_CENTER, Vec2::ZERO).show(ctx, |ui| {
+                ui.label("Vérifiez et modifiez ce résumé avant de le copier. Rien n'est envoyé automatiquement.");
+                ui.add_space(6.0);
+                ui.add(egui::TextEdit::multiline(&mut self.diagnostic_text).desired_rows(9)
+                    .desired_width(f32::INFINITY).font(egui::TextStyle::Monospace));
+                if ui.button("Copier ce diagnostic").clicked() {
+                    let _ = self.hotkey_settings.send(Control::CopyDiagnostic(self.diagnostic_text.clone()));
+                }
+            });
+        self.diagnostic_open = open;
+    }
+
+    fn route_panel(&mut self, ctx: &egui::Context) {
+        let step = self
+            .cache
+            .read()
+            .map(|step| step.clone())
+            .unwrap_or_default();
+        let max_height = if self.shortcuts.compact {
+            (ctx.available_rect().height() - 22.0).max(130.0)
+        } else {
+            230.0
+        };
+        egui::TopBottomPanel::top("ganymede-route")
+            .exact_height(if self.shortcuts.compact {
+                ctx.available_rect().height()
+            } else {
+                255.0
+            })
+            .frame(
+                egui::Frame::none()
+                    .fill(BG)
+                    .inner_margin(egui::Margin::symmetric(14.0, 10.0)),
+            )
+            .show(ctx, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("route-scroll")
+                    .max_height(max_height)
+                    .show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(text("GANYMÈDE", 11.0, MUTED).strong());
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(text(
+                                        step.progress()
+                                            .map(|value| {
+                                                format!("Étape {}", value.replace('/', " / "))
+                                            })
+                                            .unwrap_or_else(|| "Étape non reconnue".into()),
+                                        12.0,
+                                        GREEN,
+                                    ));
+                                },
+                            );
+                        });
+                        ui.add_space(8.0);
+                        let zaap = step.command(Action::Zaap).ok();
+                        let travel = step.command(Action::Travel).ok();
+                        let zaap_name = zaap
+                            .as_ref()
+                            .and_then(|command| {
+                                self.entries.iter().find(|item| item.command() == *command)
+                            })
+                            .map(|item| format!("{} [{},{}]", item.name, item.x, item.y))
+                            .unwrap_or_else(|| {
+                                zaap.clone().unwrap_or_else(|| "Aucun Zaap reconnu".into())
+                            });
+                        egui::Frame::none()
+                            .fill(CARD)
+                            .rounding(8.0)
+                            .inner_margin(10.0)
+                            .show(ui, |ui| {
+                                ui.set_min_width((ui.available_width() - 1.0).max(100.0));
+                                ui.label(text(zaap_name, 14.0, WHITE).strong());
+                                ui.label(text(
+                                    travel.as_deref().unwrap_or("Aucune destination reconnue"),
+                                    13.0,
+                                    MUTED,
+                                ));
+                                if travel.as_deref() == Some("/travel -22 -24")
+                                    && zaap.as_deref() == Some("/zaap -20,-20")
+                                {
+                                    ui.label(text("Tour des Voyageurs Dimensionnels", 11.0, GREEN));
+                                }
+                            });
+                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            let width = ((ui.available_width() - 16.0) / 3.0).max(70.0);
+                            for (label, action) in [
+                                ("Zaap", Action::Zaap),
+                                ("Travel", Action::Travel),
+                                ("Trajet complet", Action::Combined),
+                            ] {
+                                if ui
+                                    .add_enabled_ui(step.command(action).is_ok(), |ui| {
+                                        ui.add_sized(
+                                            [width, 33.0],
+                                            egui::Button::new(text(label, 12.0, WHITE))
+                                                .fill(CARD)
+                                                .rounding(6.0),
+                                        )
+                                    })
+                                    .inner
+                                    .clicked()
+                                {
+                                    self.copy_action(action);
+                                }
+                            }
+                        });
+                        if let Err(error) = step.command(Action::Combined) {
+                            ui.add_space(5.0);
+                            ui.label(text(error, 11.0, MUTED));
+                        }
+                        if self.clipboard_replaced {
+                            ui.add_space(5.0);
+                            ui.label(text(
+                                "La commande copiée a été remplacée.",
+                                12.0,
+                                Color32::from_rgb(244, 193, 94),
+                            ));
+                            if ui
+                                .add_enabled(
+                                    step.command(Action::Combined).is_ok(),
+                                    egui::Button::new("Recopier le trajet courant"),
+                                )
+                                .clicked()
+                            {
+                                self.copy_action(Action::Combined);
+                            }
+                        }
+                        if let Some(release) = &self.latest_release {
+                            ui.hyperlink_to(
+                                format!("Version {} disponible — télécharger", release.version),
+                                &release.url,
+                            );
+                        }
+                        ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            let label = if self.shortcuts.compact {
+                                format!("Afficher les {} Zaaps", self.entries.len())
+                            } else {
+                                "Revenir au mode compact".into()
+                            };
+                            if ui.button(label).clicked() {
+                                self.toggle_compact(ctx);
+                            }
+                            if ui.small_button("Diagnostic").clicked() {
+                                self.open_diagnostic();
+                            }
+                        });
+                    });
+            });
+    }
+
+    fn compact_footer(&mut self, ctx: &egui::Context) {
+        egui::TopBottomPanel::bottom("compact-footer")
+            .frame(
+                egui::Frame::none()
+                    .fill(BAR)
+                    .inner_margin(egui::Margin::symmetric(14.0, 9.0)),
+            )
+            .show(ctx, |ui| {
+                let recent = self.toast_time.elapsed() < Duration::from_secs(5);
+                let message = if recent {
+                    self.toast.as_str()
+                } else if self.shortcuts.automatic {
+                    "Auto actif — en attente de la prochaine étape"
+                } else {
+                    "Auto suspendu — raccourcis disponibles"
+                };
+                ui.add(
+                    egui::Label::new(text(
+                        message,
                         11.0,
-                        MUTED,
-                    ));
-                });
+                        if recent && self.success { GREEN } else { MUTED },
+                    ))
+                    .truncate(),
+                )
+                .on_hover_text(message);
             });
     }
 
@@ -476,12 +866,14 @@ impl ZaapsApp {
             )
             .show(ctx, |ui| {
                 let wide = ui.available_width() >= 660.0;
+                let copied_recently =
+                    self.success && self.toast_time.elapsed() < Duration::from_secs(5);
                 let status = if self.toast_time.elapsed() > Duration::from_secs(5) {
                     "Prêt à copier"
                 } else {
                     &self.toast
                 };
-                let color = if self.success { GREEN } else { MUTED };
+                let color = if copied_recently { GREEN } else { MUTED };
                 let status_width = if wide { 200.0 } else { 0.0 };
                 let search_width = if wide {
                     (ui.available_width() - status_width - 13.0).max(200.0)
@@ -517,14 +909,14 @@ impl ZaapsApp {
                         ui.add_space(10.0);
                         ui.vertical(|ui| {
                             ui.horizontal(|ui| {
-                                if self.success {
+                                if copied_recently {
                                     ui.add(egui::Image::new((
                                         self.icons.check.id(),
                                         Vec2::splat(13.0),
                                     )));
                                 }
                                 ui.label(text(
-                                    if self.success {
+                                    if copied_recently {
                                         "Commande copiée"
                                     } else {
                                         concat!("Zaaps Dofus 3 · ", env!("CARGO_PKG_VERSION"))
@@ -540,11 +932,11 @@ impl ZaapsApp {
                     draw_search(ui, &mut self.query);
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        if self.success {
+                        if copied_recently {
                             ui.add(egui::Image::new((self.icons.check.id(), Vec2::splat(12.0))));
                         }
                         ui.label(text(
-                            if self.success {
+                            if copied_recently {
                                 "Commande copiée"
                             } else {
                                 concat!("Zaaps Dofus 3 · ", env!("CARGO_PKG_VERSION"))
@@ -825,13 +1217,78 @@ impl ZaapsApp {
 
 impl eframe::App for ZaapsApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        if self.initial_visibility_pending {
+            self.initial_visibility_pending = false;
+            self.hide(ctx);
+        }
         while let Ok(notice) = self.notices.try_recv() {
-            self.show_notice(notice);
+            if let Notice::WindowVisibility(visible) = notice {
+                self.hidden = !visible;
+                ctx.send_viewport_cmd(egui::ViewportCommand::Visible(visible));
+            } else {
+                self.show_notice(notice);
+            }
+        }
+        while let Some(event) = self
+            .tray_events
+            .as_ref()
+            .and_then(|events| events.try_recv().ok())
+        {
+            match event {
+                tray::Event::Show => self.show(ctx),
+                tray::Event::ToggleAutomatic => self.toggle_automatic(),
+                tray::Event::CopyRoute => self.copy_action(Action::Combined),
+                tray::Event::Quit => self.quit(ctx),
+            }
+        }
+        while let Ok(notice) = self.update_notices.try_recv() {
+            if !self.shortcuts.check_updates && !self.manual_update_check {
+                continue;
+            }
+            self.manual_update_check = false;
+            match notice {
+                updates::ResultNotice::Available(release) => {
+                    self.update_status = format!("Version {} disponible", release.version);
+                    self.latest_release = Some(release);
+                }
+                updates::ResultNotice::Current => {
+                    self.update_status = "Aucune version plus récente disponible".into()
+                }
+                updates::ResultNotice::Failed => {
+                    self.update_status = "Vérification indisponible — réessayez plus tard".into()
+                }
+            }
+        }
+        if self.hidden && !self.tray_available() {
+            self.show(ctx);
+        }
+        if self.exiting {
+            return;
+        }
+        if let Some(tray) = &self.tray {
+            // Tooltip changes on state transitions; copy notices have their own tooltip.
+            if self.toast_time.elapsed() < Duration::from_millis(250)
+                && self.toast.starts_with("Auto")
+            {
+                tray.tip(format!("Zaaps Dofus 3 — {}", self.toast));
+            }
         }
         self.heading(ctx);
-        self.footer(ctx);
-        self.directory(ctx);
+        if self.shortcuts.compact {
+            self.compact_footer(ctx);
+        } else {
+            self.footer(ctx);
+        }
+        self.route_panel(ctx);
+        if self.shortcuts.compact {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::none().fill(BG))
+                .show(ctx, |_| {});
+        } else {
+            self.directory(ctx);
+        }
         self.settings(ctx);
+        self.diagnostic(ctx);
         self.resize_grips(ctx);
         self.window_corners.update(ctx.pixels_per_point());
         ctx.request_repaint_after(Duration::from_millis(200));
@@ -841,5 +1298,8 @@ impl eframe::App for ZaapsApp {
 impl Drop for ZaapsApp {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        if let Some(tray) = &self.tray {
+            tray.shutdown();
+        }
     }
 }

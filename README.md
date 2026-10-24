@@ -31,9 +31,13 @@ Retrouvez un zaap, préparez votre déplacement et copiez votre trajet sans ress
 | **45 zaaps intégrés** | Parcourez la liste et copiez une commande en un clic. |
 | **Recherche immédiate** | Retrouvez un zaap par son nom ou sa région. |
 | **Trajets Ganymède** | Récupérez le Zaap recommandé et les coordonnées de destination. |
-| **Trois raccourcis configurables** | Choisissez vos touches pour le Zaap, le voyage et le trajet complet. |
+| **Cinq raccourcis configurables** | Choisissez vos touches pour le Zaap, le voyage et le trajet complet. |
 | **Mode automatique** | Copiez une fois le trajet à chaque nouvelle étape reconnue. |
 | **Interface adaptable** | Redimensionnez librement la fenêtre ; les colonnes s'ajustent à sa largeur. |
+| **Mode compact mémorisé** | Gardez seulement l'étape, le trajet et les boutons de copie ; dépliez la liste au besoin. |
+| **Icône près de l'horloge** | Réduisez la fenêtre en gardant la lecture de Ganymède et les raccourcis actifs. |
+| **Presse-papiers surveillé** | Soyez averti si la commande copiée est remplacée et recopiez le trajet courant. |
+| **Options de confort** | Confirmation visuelle, son ou silence ; démarrage avec Windows facultatif ; notification des nouvelles versions. |
 
 ## En images
 
@@ -44,21 +48,37 @@ Retrouvez un zaap, préparez votre déplacement et copiez votre trajet sans ress
 
 ## Prise en main
 
-1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.0.3-Windows-x64.zip** et extrayez entièrement l'archive.
+1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.1.0-Windows-x64.zip** et extrayez entièrement l'archive.
 2. Ouvrez Ganymède sur votre guide, puis lancez **Zaaps Dofus 3.exe**.
 3. Cliquez sur un zaap ou utilisez un raccourci, puis collez la commande dans Dofus.
 
 **Aucune installation de Rust n'est nécessaire.** Le logiciel copie les commandes dans le presse-papiers ; vous gardez la main sur leur utilisation dans Dofus.
 
-## Vos trois raccourcis
+## Vos raccourcis
 
 | Raccourci par défaut | Action |
 | --- | --- |
 | **Ctrl + J** | Copier le Zaap recommandé : `/zaap X,Y`. |
 | **Ctrl + K** | Copier la destination : `/travel X Y`. |
 | **Ctrl + L** | Copier le trajet complet disponible. |
+| **Ctrl + Shift + A** | Suspendre ou reprendre le mode automatique. |
+| **Ctrl + Shift + Z** | Afficher ou masquer la fenêtre. |
 
 Ouvrez les réglages avec l'icône d'engrenage pour personnaliser les touches. Vos préférences sont conservées entre les lancements.
+
+## Une présence discrète pendant vos guides
+
+La vue compacte affiche le numéro d'étape reconnu, le Zaap et la destination. Les boutons **Zaap**, **Travel** et **Trajet complet** utilisent les mêmes données vérifiées que les raccourcis. **Afficher les 45 Zaaps** ouvre le gestionnaire avec sa recherche ; **Revenir au mode compact** replie la liste. Le mode choisi est mémorisé.
+
+Le bouton **−** réduit l'application près de l'horloge. Cliquez sur son icône pour la retrouver, ou utilisez **Ctrl+Shift+Z**. Le clic droit propose aussi la suspension d'Auto, la copie du trajet courant et **Quitter**. Le bouton **×** ferme complètement le logiciel. Si l'icône ne peut pas être créée, la réduction utilise la barre des tâches.
+
+Dans les réglages, choisissez une confirmation **visuelle**, un **son léger** ou le **silence**. Les notifications visuelles respectent les paramètres de notification de Windows. La surveillance du presse-papiers ne restaure jamais une ancienne commande automatiquement : **Recopier le trajet courant** relit la destination actuellement reconnue.
+
+Le **lancement avec Windows** est facultatif et désactivé par défaut. Activez-le après avoir placé l'exécutable à son emplacement définitif ; l'application démarrera réduite près de l'horloge. Si vous déplacez le dossier, enregistrez à nouveau les réglages pour actualiser cet emplacement.
+
+La vérification de version consulte GitHub au lancement puis toutes les six heures, lorsqu'elle est activée. Elle affiche un lien vers une nouvelle Release stable sans télécharger ni installer de fichier automatiquement. Une vérification manuelle est disponible dans les réglages.
+
+Le bouton **Diagnostic** ouvre un résumé modifiable de l'étape et des commandes reconnues. Il n'inclut ni le texte complet du guide ni le contenu remplacé du presse-papiers. Rien n'est envoyé automatiquement ; vérifiez l'aperçu avant de le copier et de le partager.
 
 ## Le bon trajet selon l'étape
 
