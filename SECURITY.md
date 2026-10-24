@@ -2,7 +2,7 @@
 
 ## Versions prises en charge
 
-La version 1.1.2 est la version actuelle du projet.
+La version 1.1.3 est la version actuelle du projet.
 
 ## Fonctionnement
 

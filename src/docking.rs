@@ -11,12 +11,17 @@ use windows::{
     core::{BOOL, PWSTR},
     Win32::{
         Foundation::{CloseHandle, HWND, LPARAM, RECT},
+        Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS},
         Graphics::Gdi::{
             GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
         },
         System::Threading::{
             OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_FORMAT,
             PROCESS_QUERY_LIMITED_INFORMATION,
+        },
+        UI::HiDpi::{
+            GetDpiForWindow, SetThreadDpiAwarenessContext, DPI_AWARENESS_CONTEXT,
+            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
         },
         UI::WindowsAndMessaging::{
             EnumWindows, GetGUIThreadInfo, GetWindow, GetWindowLongPtrW, GetWindowRect,
@@ -99,6 +104,9 @@ enum Leader {
 }
 
 fn align(mut pair: Pair, side: Side, leader: Leader, work: Bounds) -> Option<Pair> {
+    if matches!(side, Side::Top | Side::Bottom) {
+        pair.app.w = pair.guide.w;
+    }
     let a = pair.app;
     let g = pair.guide;
     match leader {
@@ -148,6 +156,69 @@ fn align(mut pair: Pair, side: Side, leader: Leader, work: Bounds) -> Option<Pai
 struct Tracking {
     previous: Option<Pair>,
     pending: Option<(Pair, Pair, Instant)>,
+}
+
+struct PhysicalPixels(DPI_AWARENESS_CONTEXT);
+impl PhysicalPixels {
+    fn enter() -> Option<Self> {
+        let previous =
+            unsafe { SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+        (!previous.0.is_null()).then_some(Self(previous))
+    }
+}
+impl Drop for PhysicalPixels {
+    fn drop(&mut self) {
+        unsafe {
+            SetThreadDpiAwarenessContext(self.0);
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Frame {
+    outer: Bounds,
+    visible: Bounds,
+}
+impl Frame {
+    fn target(self, visible: Bounds) -> Bounds {
+        Bounds {
+            x: visible.x - (self.visible.x - self.outer.x),
+            y: visible.y - (self.visible.y - self.outer.y),
+            w: visible.w + self.outer.w - self.visible.w,
+            h: visible.h + self.outer.h - self.visible.h,
+        }
+    }
+}
+
+fn frame(window: HWND) -> Option<Frame> {
+    let outer = rect(window)?;
+    let mut r = RECT::default();
+    let ok = unsafe {
+        DwmGetWindowAttribute(
+            window,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut r as *mut _ as *mut _,
+            std::mem::size_of::<RECT>() as u32,
+        )
+        .is_ok()
+    };
+    let visible = Bounds {
+        x: r.left,
+        y: r.top,
+        w: r.right - r.left,
+        h: r.bottom - r.top,
+    };
+    let valid = ok
+        && visible.w > 0
+        && visible.h > 0
+        && visible.x >= outer.x
+        && visible.y >= outer.y
+        && visible.x + visible.w <= outer.x + outer.w
+        && visible.y + visible.h <= outer.y + outer.h;
+    Some(Frame {
+        outer,
+        visible: if valid { visible } else { outer },
+    })
 }
 impl Tracking {
     fn user_takes_over(&mut self, active: Option<Leader>) {
@@ -310,18 +381,14 @@ fn work_area(window: HWND) -> Option<Bounds> {
 }
 
 fn position(window: HWND, bounds: Bounds) -> bool {
-    unsafe {
-        SetWindowPos(
-            window,
-            None,
-            bounds.x,
-            bounds.y,
-            0,
-            0,
-            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS,
-        )
-        .is_ok()
+    let Some(before) = rect(window) else {
+        return false;
+    };
+    let mut flags = SWP_NOZORDER | SWP_NOACTIVATE | SWP_ASYNCWINDOWPOS;
+    if (before.w, before.h) == (bounds.w, bounds.h) {
+        flags |= SWP_NOSIZE;
     }
+    unsafe { SetWindowPos(window, None, bounds.x, bounds.y, bounds.w, bounds.h, flags).is_ok() }
 }
 
 pub fn start(
@@ -333,20 +400,25 @@ pub fn start(
     let status = Arc::new(RwLock::new(String::new()));
     let output = status.clone();
     thread::Builder::new().name("window-docking".into()).spawn(move || {
+        let Some(_pixels) = PhysicalPixels::enter() else {
+            if let Ok(mut value) = output.write() { *value = "Coordonnées d'écran indisponibles".into(); }
+            ctx.request_repaint();
+            return;
+        };
         let mut config = initial;
         let mut tracking = Tracking::default();
         let mut guide = HWND::default();
         let mut app = HWND::default();
         let mut last_search = Instant::now() - Duration::from_secs(2);
         let mut message = String::new();
-        let mut failed = false;
+        let mut failed: Option<Pair> = None;
         let mut settle_until = Instant::now() + Duration::from_millis(150);
         while !stop.load(Ordering::Relaxed) {
             match rx.recv_timeout(if config.enabled { Duration::from_millis(32) } else { Duration::from_millis(200) }) {
                 Ok(value) => {
                     config = value;
                     while let Ok(value) = rx.try_recv() { config = value; }
-                    tracking = Tracking::default(); failed = false;
+                    tracking = Tracking::default(); failed = None;
                     settle_until = Instant::now() + Duration::from_millis(150);
                     last_search = Instant::now() - Duration::from_secs(2);
                 }
@@ -355,13 +427,11 @@ pub fn start(
             }
             let next = if !config.enabled { "" } else if Instant::now() < settle_until {
                 "Accrochage en cours…"
-            } else if failed {
-                "Déplacement indisponible : désactivez puis réactivez l'accrochage"
             } else {
                 if last_search.elapsed() >= Duration::from_secs(1) {
                     let found = find_guide();
                     let next = found.unwrap_or_default();
-                    if guide != next { tracking = Tracking::default(); }
+                    if guide != next { tracking = Tracking::default(); failed = None; }
                     guide = next;
                     app = HWND(crate::window_corners::find_window() as *mut _);
                     last_search = Instant::now();
@@ -372,11 +442,16 @@ pub fn start(
                     message.as_str()
                 } else if !normal(app) || !normal(guide) {
                     tracking = Tracking::default();
+                    failed = None;
                     "En pause : fenêtres réduites, masquées ou agrandies"
                 } else {
-                    match (rect(app), rect(guide)) {
-                        (Some(app_rect), Some(guide_rect)) => {
-                            let pair = Pair { app: app_rect, guide: guide_rect };
+                    match (frame(app), frame(guide)) {
+                        (Some(app_frame), Some(guide_frame)) => {
+                            let pair = Pair { app: app_frame.outer, guide: guide_frame.outer };
+                            if failed == Some(pair) {
+                                "Accrochage en attente : déplacez ou redimensionnez une fenêtre"
+                            } else {
+                            failed = None;
                             let mut info = GUITHREADINFO { cbSize: std::mem::size_of::<GUITHREADINFO>() as u32, ..Default::default() };
                             let active = unsafe {
                                 if GetGUIThreadInfo(0, &mut info).is_err() { None }
@@ -386,24 +461,36 @@ pub fn start(
                             };
                             tracking.user_takes_over(active);
                             match tracking.observe(pair, Instant::now()) {
-                                Err(()) => { failed = true; "Déplacement non confirmé : réactivez l'accrochage" }
+                                Err(()) => { failed = Some(pair); "Déplacement non confirmé — en attente d'un mouvement" }
                                 Ok(None) => "Fenêtres accrochées",
                                 Ok(Some(leader)) => {
                                     let leader = active.unwrap_or(leader);
                                     let work = work_area(if leader == Leader::App { app } else { guide });
-                                    if let Some(target) = work.and_then(|area| align(pair, config.side, leader, area)) {
+                                    let visible = Pair { app: app_frame.visible, guide: guide_frame.visible };
+                                    let anchor = if leader == Leader::App { app } else { guide };
+                                    let minimum_width = (320 * unsafe { GetDpiForWindow(anchor) }.max(96)).div_ceil(96) as i32;
+                                    if matches!(config.side, Side::Top | Side::Bottom) && visible.guide.w < minimum_width {
+                                        tracking = Tracking::default();
+                                        "Élargissez Ganymède pour afficher le compagnon"
+                                    } else if let Some(target) = work.and_then(|area| align(visible, config.side, leader, area)) {
+                                        let target = Pair { app: app_frame.target(target.app), guide: guide_frame.target(target.guide) };
                                         // Revalidate the foreign process immediately before any movement.
                                         if !primary_window(guide) || !guide_process(guide) { tracking = Tracking::default(); "Ganymède indisponible" }
                                         else if (target.app == pair.app || position(app, target.app))
                                             && (target.guide == pair.guide || position(guide, target.guide)) {
                                             tracking.submitted(pair, target);
                                             "Fenêtres accrochées"
-                                        } else { failed = true; "Déplacement refusé : réactivez l'accrochage" }
+                                        } else {
+                                            failed = Some(pair);
+                                            tracking = Tracking { previous: Some(pair), pending: None };
+                                            "Déplacement refusé — en attente d'un mouvement"
+                                        }
                                     } else {
                                         tracking = Tracking::default();
                                         "Place insuffisante : choisissez un autre côté ou réduisez les fenêtres"
                                     }
                                 }
+                            }
                             }
                         }
                         _ => { tracking = Tracking::default(); "Lecture des fenêtres indisponible" }
@@ -421,6 +508,115 @@ pub fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn visible_edges_touch_with_invisible_borders_at_different_dpi() {
+        for dpi in [96, 120, 144, 192] {
+            let s = |n| n * dpi / 96;
+            let app = Frame {
+                outer: Bounds {
+                    x: -1800,
+                    y: 100,
+                    w: s(460),
+                    h: s(225),
+                },
+                visible: Bounds {
+                    x: -1800,
+                    y: 100,
+                    w: s(460),
+                    h: s(225),
+                },
+            };
+            let guide = Frame {
+                outer: Bounds {
+                    x: -1200,
+                    y: 500,
+                    w: s(428),
+                    h: s(624),
+                },
+                visible: Bounds {
+                    x: -1200 + s(7),
+                    y: 500,
+                    w: s(428) - 2 * s(7),
+                    h: s(624) - s(7),
+                },
+            };
+            let visible_after = |frame: Frame, outer: Bounds| Bounds {
+                x: outer.x + frame.visible.x - frame.outer.x,
+                y: outer.y + frame.visible.y - frame.outer.y,
+                w: outer.w + frame.visible.w - frame.outer.w,
+                h: outer.h + frame.visible.h - frame.outer.h,
+            };
+            for side in Side::ALL {
+                for leader in [Leader::App, Leader::Guide] {
+                    let target = align(
+                        Pair {
+                            app: app.visible,
+                            guide: guide.visible,
+                        },
+                        side,
+                        leader,
+                        Bounds {
+                            x: -6000,
+                            y: -3000,
+                            w: 12000,
+                            h: 9000,
+                        },
+                    )
+                    .unwrap();
+                    let a = app.target(target.app);
+                    let g = guide.target(target.guide);
+                    assert!(touching(
+                        Pair {
+                            app: visible_after(app, a),
+                            guide: visible_after(guide, g)
+                        },
+                        side
+                    ));
+                    assert_eq!((g.w, g.h), (guide.outer.w, guide.outer.h));
+                    assert_eq!(a.h, app.outer.h);
+                    if matches!(side, Side::Top | Side::Bottom) {
+                        assert_eq!(target.app.w, target.guide.w);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn width_tracks_a_resized_guide_without_resizing_the_guide() {
+        let mut p = pair();
+        for width in [414, 500, 360, 414] {
+            p.guide.w = width;
+            p = align(p, Side::Top, Leader::Guide, work()).unwrap();
+            assert_eq!(p.app.w, width);
+            assert_eq!(p.guide.w, width);
+            assert!(touching(p, Side::Top));
+        }
+    }
+
+    #[test]
+    fn failed_confirmation_can_resume_after_a_user_resize() {
+        let before = pair();
+        let target = align(before, Side::Left, Leader::Guide, work()).unwrap();
+        let mut tracking = Tracking::default();
+        tracking.submitted(before, target);
+        assert_eq!(
+            tracking.observe(before, Instant::now() + Duration::from_secs(1)),
+            Err(())
+        );
+        let resized = Pair {
+            app: Bounds {
+                h: before.app.h + 10,
+                ..before.app
+            },
+            ..before
+        };
+        assert_eq!(
+            tracking.observe(resized, Instant::now()),
+            Ok(Some(Leader::App))
+        );
+    }
 
     #[test]
     fn ganymede_notification_window_is_not_a_second_main_window() {
@@ -456,13 +652,14 @@ mod tests {
     #[test]
     #[ignore = "read-only inspection of a running Ganymede window"]
     fn native_running_guide_has_one_primary_window() {
+        let _pixels = PhysicalPixels::enter().expect("physical pixel coordinates");
         let mut found = Vec::<HWND>::new();
         unsafe {
             EnumWindows(Some(collect), LPARAM(&mut found as *mut _ as isize)).unwrap();
         }
         println!("Candidate count: {}", found.len());
         for window in &found {
-            let bounds = rect(*window);
+            let bounds = frame(*window);
             unsafe {
                 println!(
                     "Candidate {:?}: bounds={bounds:?}, owner={:?}, exstyle={:#x}",
@@ -507,13 +704,23 @@ mod tests {
         }
     }
     #[test]
-    fn every_side_follows_either_window_without_resizing() {
+    fn every_side_follows_either_window_and_vertical_sides_match_guide_width() {
         for side in Side::ALL {
             for leader in [Leader::App, Leader::Guide] {
                 let before = pair();
                 let after = align(before, side, leader, work()).unwrap();
                 assert!(touching(after, side));
-                assert_eq!((after.app.w, after.app.h), (before.app.w, before.app.h));
+                assert_eq!(
+                    (after.app.w, after.app.h),
+                    (
+                        if matches!(side, Side::Top | Side::Bottom) {
+                            before.guide.w
+                        } else {
+                            before.app.w
+                        },
+                        before.app.h
+                    )
+                );
                 assert_eq!(
                     (after.guide.w, after.guide.h),
                     (before.guide.w, before.guide.h)
@@ -665,6 +872,7 @@ mod tests {
     #[test]
     #[ignore = "native Windows test using two hidden, owned fixture windows"]
     fn native_hidden_windows_move_in_both_directions_without_activation() {
+        let _pixels = PhysicalPixels::enter().expect("physical pixel coordinates");
         use windows::{
             core::w,
             Win32::UI::WindowsAndMessaging::{
@@ -717,11 +925,17 @@ mod tests {
             let foreground = GetForegroundWindow();
             for side in Side::ALL {
                 for leader in [Leader::App, Leader::Guide] {
-                    let before = Pair {
-                        app: rect(a.0).unwrap(),
-                        guide: rect(g.0).unwrap(),
+                    let app_frame = frame(a.0).unwrap();
+                    let guide_frame = frame(g.0).unwrap();
+                    let visible = Pair {
+                        app: app_frame.visible,
+                        guide: guide_frame.visible,
                     };
-                    let target = align(before, side, leader, work()).unwrap();
+                    let target = align(visible, side, leader, work()).unwrap();
+                    let target = Pair {
+                        app: app_frame.target(target.app),
+                        guide: guide_frame.target(target.guide),
+                    };
                     assert!(position(a.0, target.app));
                     assert!(position(g.0, target.guide));
                     assert_eq!(rect(a.0), Some(target.app));

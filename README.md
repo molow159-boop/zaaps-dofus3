@@ -49,7 +49,7 @@ Retrouvez un zaap, préparez votre déplacement et copiez votre trajet sans ress
 
 ## Prise en main
 
-1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.1.2-Windows-x64.zip** et extrayez entièrement l'archive.
+1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.1.3-Windows-x64.zip** et extrayez entièrement l'archive.
 2. Ouvrez Ganymède sur votre guide, puis lancez **Zaaps Dofus 3.exe**.
 3. Cliquez sur un zaap ou utilisez un raccourci, puis collez la commande dans Dofus.
 
@@ -71,7 +71,7 @@ Ouvrez les réglages avec l'icône d'engrenage pour personnaliser les touches. V
 
 La vue compacte affiche le numéro d'étape reconnu, le Zaap et la destination. Les boutons **Zaap**, **Travel** et **Trajet complet** utilisent les mêmes données vérifiées que les raccourcis. **Afficher les 45 Zaaps** ouvre le gestionnaire avec sa recherche ; **Revenir au mode compact** replie la liste. Le mode choisi est mémorisé.
 
-Pour réunir les deux fenêtres, cochez **Accrocher à Ganymède** et choisissez **En haut**, **En bas**, **À gauche** ou **À droite**. Le côté décrit la position de Zaaps par rapport à Ganymède. Déplacer l'une déplace l'autre ; redimensionner une fenêtre conserve l'alignement sans changer la taille de l'autre. L'option et le côté sont mémorisés ; décochez l'option pour séparer les fenêtres.
+Pour réunir les deux fenêtres, cochez **Accrocher à Ganymède** et choisissez **En haut**, **En bas**, **À gauche** ou **À droite**. Le côté décrit la position de Zaaps par rapport à Ganymède. Déplacer l'une déplace l'autre ; les bords visibles restent accolés, sans l'espace des bordures invisibles de Windows. En haut et en bas, Zaaps prend automatiquement la largeur de Ganymède : redimensionnez Ganymède pour ajuster cette largeur et les bords de Zaaps pour sa hauteur. Sur les côtés, le haut des fenêtres est aligné et Zaaps conserve sa taille compacte. La taille de Ganymède n'est pas modifiée par l'accrochage. L'option et le côté sont mémorisés ; décochez l'option pour séparer les fenêtres.
 
 La vue accrochée se réduit automatiquement à environ **225 pixels de haut** : Auto, numéro d'étape, destination et trois boutons de copie. Le petit bouton **Afficher Zaaps** ouvre la liste et la recherche dans une fenêtre séparée, sans agrandir le compagnon. L'engrenage ouvre les réglages dans leur propre fenêtre ; le diagnostic y reste accessible.
 

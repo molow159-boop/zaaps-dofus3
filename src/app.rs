@@ -489,7 +489,7 @@ impl ZaapsApp {
                         ui.separator();
                         ui.label(text("Accrochage des fenêtres", 13.0, WHITE));
                         dock_controls(ui, &mut self.draft, "dock-settings");
-                        ui.label(text("Déplacer l'une entraîne l'autre. Chaque fenêtre garde sa taille. Accrochage en pause si une fenêtre est réduite, masquée ou agrandie au maximum.", 11.0, MUTED));
+                        ui.label(text("Déplacer l'une entraîne l'autre. En haut ou en bas, Zaaps suit la largeur de Ganymède. Pause si une fenêtre est réduite, masquée ou maximisée.", 11.0, MUTED));
                         ui.separator();
                         ui.label(text("Confirmation de copie", 13.0, WHITE));
                         ui.horizontal_wrapped(|ui| {
@@ -573,7 +573,13 @@ impl ZaapsApp {
                 ui.spacing_mut().item_spacing.x = 3.0;
                 ui.horizontal(|ui| {
                     ui.add(egui::Image::new((self.icons.brand.id(), Vec2::splat(28.0))));
-                    ui.label(text("Zaaps Dofus 3", 16.0, WHITE).strong());
+                    let title = if self.shortcuts.dock_enabled && ctx.screen_rect().width() < 400.0
+                    {
+                        "Zaaps"
+                    } else {
+                        "Zaaps Dofus 3"
+                    };
+                    ui.label(text(title, 16.0, WHITE).strong());
                     let controls = if self.shortcuts.compact { 183.0 } else { 217.0 };
                     let drag = ui.add_sized(
                         [(ui.available_width() - controls).max(1.0), 30.0],
@@ -744,7 +750,7 @@ impl ZaapsApp {
         self.maximized = false;
         ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
         ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(if slim {
-            Vec2::new(400.0, 225.0)
+            Vec2::new(320.0, 225.0)
         } else {
             Vec2::new(400.0, 300.0)
         }));
@@ -1349,6 +1355,14 @@ impl ZaapsApp {
             ResizeDirection::South,
             CursorIcon::ResizeVertical,
         );
+        if self.shortcuts.dock_enabled
+            && matches!(
+                self.shortcuts.dock_side,
+                docking::Side::Top | docking::Side::Bottom
+            )
+        {
+            return;
+        }
         grip(
             "resize-west",
             Rect::from_min_size(
@@ -1512,87 +1526,97 @@ mod compact_tests {
 
     #[test]
     fn attached_route_and_directory_button_fit_in_225_pixels() {
-        let ctx = egui::Context::default();
-        let mut companion = None;
-        let output = ctx.run(
-            egui::RawInput {
-                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(460.0, 225.0))),
-                ..Default::default()
-            },
-            |ctx| {
-                let prefs = Shortcuts {
-                    dock_enabled: true,
-                    ..Shortcuts::default()
-                };
-                let mut app = ZaapsApp {
-                    entries: data::embedded().unwrap(),
-                    query: String::new(),
-                    draft: prefs.clone(),
-                    shortcuts: prefs,
-                    settings_open: false,
-                    recording: None,
-                    toast: String::new(),
-                    success: false,
-                    toast_time: Instant::now(),
-                    notices: mpsc::channel().1,
-                    hotkey_settings: mpsc::channel().0,
-                    stop: Arc::new(AtomicBool::new(true)),
-                    maximized: false,
-                    icons: Icons::new(ctx),
-                    window_corners: WindowCorners::default(),
-                    cache: Arc::new(RwLock::new(Step::from_text(
-                        "697/774\nEnsuite allez en [-14,37]",
-                        &data::embedded().unwrap(),
-                    ))),
-                    tray: None,
-                    tray_events: None,
-                    update_requests: mpsc::channel().0,
-                    update_notices: mpsc::channel().1,
-                    latest_release: None,
-                    update_status: String::new(),
-                    manual_update_check: false,
-                    hidden: false,
-                    exiting: false,
-                    initial_visibility_pending: false,
-                    clipboard_replaced: false,
-                    diagnostic_open: false,
-                    diagnostic_text: String::new(),
-                    compact_size: Vec2::new(460.0, 360.0),
-                    directory_size: Vec2::new(960.0, 750.0),
-                    dock_config: mpsc::channel().0,
-                    dock_status: Arc::new(RwLock::new("Fenêtres accrochées".into())),
-                    slim_layout: true,
-                    manager_open: false,
-                };
-                app.heading(ctx);
-                app.route_panel(ctx);
-                companion = Some(app);
-            },
-        );
-        let labels: Vec<_> = output
-            .shapes
-            .iter()
-            .filter_map(|s| match &s.shape {
-                egui::epaint::Shape::Text(t) => {
-                    Some((t.galley.job.text.as_str(), t.pos.y + t.galley.rect.max.y))
-                }
-                _ => None,
-            })
-            .collect();
-        for label in ["Zaap", "Travel", "Trajet complet", "Afficher Zaaps"] {
-            let bottom = labels
-                .iter()
-                .find(|(text, _)| *text == label)
-                .unwrap_or_else(|| panic!("Missing {label}: {labels:?}"))
-                .1;
-            assert!(
-                bottom <= 225.0,
-                "{label} extends below the compact window: {bottom}"
+        for width in [320.0, 414.0, 460.0] {
+            let ctx = egui::Context::default();
+            let mut companion = None;
+            let output = ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(width, 225.0))),
+                    ..Default::default()
+                },
+                |ctx| {
+                    let prefs = Shortcuts {
+                        dock_enabled: true,
+                        ..Shortcuts::default()
+                    };
+                    let mut app = ZaapsApp {
+                        entries: data::embedded().unwrap(),
+                        query: String::new(),
+                        draft: prefs.clone(),
+                        shortcuts: prefs,
+                        settings_open: false,
+                        recording: None,
+                        toast: String::new(),
+                        success: false,
+                        toast_time: Instant::now(),
+                        notices: mpsc::channel().1,
+                        hotkey_settings: mpsc::channel().0,
+                        stop: Arc::new(AtomicBool::new(true)),
+                        maximized: false,
+                        icons: Icons::new(ctx),
+                        window_corners: WindowCorners::default(),
+                        cache: Arc::new(RwLock::new(Step::from_text(
+                            "697/774\nEnsuite allez en [-14,37]",
+                            &data::embedded().unwrap(),
+                        ))),
+                        tray: None,
+                        tray_events: None,
+                        update_requests: mpsc::channel().0,
+                        update_notices: mpsc::channel().1,
+                        latest_release: None,
+                        update_status: String::new(),
+                        manual_update_check: false,
+                        hidden: false,
+                        exiting: false,
+                        initial_visibility_pending: false,
+                        clipboard_replaced: false,
+                        diagnostic_open: false,
+                        diagnostic_text: String::new(),
+                        compact_size: Vec2::new(460.0, 360.0),
+                        directory_size: Vec2::new(960.0, 750.0),
+                        dock_config: mpsc::channel().0,
+                        dock_status: Arc::new(RwLock::new("Fenêtres accrochées".into())),
+                        slim_layout: true,
+                        manager_open: false,
+                    };
+                    app.heading(ctx);
+                    app.route_panel(ctx);
+                    companion = Some(app);
+                },
             );
+            let labels: Vec<_> = output
+                .shapes
+                .iter()
+                .filter_map(|s| match &s.shape {
+                    egui::epaint::Shape::Text(t) => Some((
+                        t.galley.job.text.as_str(),
+                        t.pos.y + t.galley.rect.max.y,
+                        t.pos.x + t.galley.rect.max.x,
+                    )),
+                    _ => None,
+                })
+                .collect();
+            for label in ["Zaap", "Travel", "Trajet complet", "Afficher Zaaps"] {
+                let bottom = labels
+                    .iter()
+                    .find(|(text, _, _)| *text == label)
+                    .unwrap_or_else(|| panic!("Missing {label}: {labels:?}"))
+                    .1;
+                assert!(
+                    bottom <= 225.0,
+                    "{label} extends below the compact window: {bottom}"
+                );
+                let right = labels.iter().find(|(text, _, _)| *text == label).unwrap().2;
+                assert!(
+                    right <= width,
+                    "{label} extends beyond width {width}: {right}"
+                );
+            }
+            assert!(!labels
+                .iter()
+                .any(|(label, _, _)| label.contains("Accrocher à Ganymède")
+                    || *label == "Diagnostic"));
+            drop(companion);
         }
-        assert!(!labels
-            .iter()
-            .any(|(label, _)| label.contains("Accrocher à Ganymède") || *label == "Diagnostic"));
-        drop(companion);
     }
 }

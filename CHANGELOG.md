@@ -1,5 +1,13 @@
 # Historique des versions
 
+## 1.1.3
+
+- Alignement sur les bords visibles des fenêtres, sans l'espace des bordures invisibles de Windows.
+- Largeur du compagnon automatiquement ajustée à celle de Ganymède en haut et en bas ; hauteur compacte conservée.
+- Calcul des positions en pixels physiques pour éviter les décalages liés à l'échelle d'affichage.
+- Reprise de l'accrochage après un mouvement ou redimensionnement lorsqu'un déplacement précédent n'avait pas été confirmé.
+- Tests sur les bordures, les échelles d'affichage, le suivi de largeur et la vue compacte de 320 à 460 pixels de large.
+
 ## 1.1.2
 
 - Vue accrochée compacte de 225 pixels de haut, avec bouton « Afficher Zaaps » ouvrant le gestionnaire indépendamment ; réglages et diagnostic dans des fenêtres séparées.

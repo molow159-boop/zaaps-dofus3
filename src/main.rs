@@ -35,7 +35,7 @@ fn main() -> eframe::Result {
                 [960.0, 750.0]
             })
             .with_min_inner_size(if prefs.dock_enabled {
-                [400.0, 225.0]
+                [320.0, 225.0]
             } else {
                 [400.0, 300.0]
             })
