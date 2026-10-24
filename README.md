@@ -35,6 +35,7 @@ Retrouvez un zaap, préparez votre déplacement et copiez votre trajet sans ress
 | **Mode automatique** | Copiez une fois le trajet à chaque nouvelle étape reconnue. |
 | **Interface adaptable** | Redimensionnez librement la fenêtre ; les colonnes s'ajustent à sa largeur. |
 | **Mode compact mémorisé** | Gardez seulement l'étape, le trajet et les boutons de copie ; dépliez la liste au besoin. |
+| **Accrochage à Ganymède** | Placez Zaaps en haut, en bas ou sur un côté ; déplacer l'une entraîne l'autre. |
 | **Icône près de l'horloge** | Réduisez la fenêtre en gardant la lecture de Ganymède et les raccourcis actifs. |
 | **Presse-papiers surveillé** | Soyez averti si la commande copiée est remplacée et recopiez le trajet courant. |
 | **Options de confort** | Confirmation visuelle, son ou silence ; démarrage avec Windows facultatif ; notification des nouvelles versions. |
@@ -48,7 +49,7 @@ Retrouvez un zaap, préparez votre déplacement et copiez votre trajet sans ress
 
 ## Prise en main
 
-1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.1.0-Windows-x64.zip** et extrayez entièrement l'archive.
+1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.1.1-Windows-x64.zip** et extrayez entièrement l'archive.
 2. Ouvrez Ganymède sur votre guide, puis lancez **Zaaps Dofus 3.exe**.
 3. Cliquez sur un zaap ou utilisez un raccourci, puis collez la commande dans Dofus.
 
@@ -69,6 +70,10 @@ Ouvrez les réglages avec l'icône d'engrenage pour personnaliser les touches. V
 ## Une présence discrète pendant vos guides
 
 La vue compacte affiche le numéro d'étape reconnu, le Zaap et la destination. Les boutons **Zaap**, **Travel** et **Trajet complet** utilisent les mêmes données vérifiées que les raccourcis. **Afficher les 45 Zaaps** ouvre le gestionnaire avec sa recherche ; **Revenir au mode compact** replie la liste. Le mode choisi est mémorisé.
+
+Pour réunir les deux fenêtres, cochez **Accrocher à Ganymède** et choisissez **En haut**, **En bas**, **À gauche** ou **À droite**. Le côté décrit la position de Zaaps par rapport à Ganymède. Déplacer l'une déplace l'autre ; redimensionner une fenêtre conserve l'alignement sans changer la taille de l'autre. L'option et le côté sont mémorisés ; décochez l'option pour séparer les fenêtres.
+
+L'accrochage est suspendu si l'une des fenêtres est masquée, réduite ou agrandie au maximum, puis reprend après restauration. Le groupe reste dans la zone utilisable de l'écran de la fenêtre déplacée. Si les deux fenêtres n'y tiennent pas, choisissez un autre côté ou réduisez leur taille. Si plusieurs fenêtres Ganymède sont reconnues, l'accrochage attend qu'une seule reste visible. L'option est désactivée par défaut.
 
 Le bouton **−** réduit l'application près de l'horloge. Cliquez sur son icône pour la retrouver, ou utilisez **Ctrl+Shift+Z**. Le clic droit propose aussi la suspension d'Auto, la copie du trajet courant et **Quitter**. Le bouton **×** ferme complètement le logiciel. Si l'icône ne peut pas être créée, la réduction utilise la barre des tâches.
 

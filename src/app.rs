@@ -1,7 +1,7 @@
 use crate::{
     commands::{Action, Step},
     data::{self, Zaap},
-    desktop, diagnostics, ganymede,
+    desktop, diagnostics, docking, ganymede,
     hotkeys::{self, Control, Feedback, Notice, Shortcuts},
     tray, updates,
     window_corners::WindowCorners,
@@ -114,6 +114,8 @@ pub struct ZaapsApp {
     diagnostic_text: String,
     compact_size: Vec2,
     directory_size: Vec2,
+    dock_config: mpsc::Sender<docking::Config>,
+    dock_status: Arc<RwLock<String>>,
 }
 
 fn text(value: impl Into<String>, size: f32, color: Color32) -> RichText {
@@ -143,6 +145,22 @@ fn title_button(ui: &mut egui::Ui, label: &str, title: &str) -> egui::Response {
             .stroke(Stroke::NONE),
     )
     .on_hover_text(title)
+}
+
+fn dock_controls(ui: &mut egui::Ui, prefs: &mut Shortcuts, id: &str) -> bool {
+    let before = (prefs.dock_enabled, prefs.dock_side);
+    ui.horizontal_wrapped(|ui| {
+        ui.checkbox(&mut prefs.dock_enabled, "Accrocher à Ganymède");
+        egui::ComboBox::from_id_salt(id)
+            .selected_text(prefs.dock_side.label())
+            .width(85.0)
+            .show_ui(ui, |ui| {
+                for side in docking::Side::ALL {
+                    ui.selectable_value(&mut prefs.dock_side, side, side.label());
+                }
+            });
+    });
+    before != (prefs.dock_enabled, prefs.dock_side)
 }
 
 impl ZaapsApp {
@@ -200,6 +218,14 @@ impl ZaapsApp {
         if let Some(tray) = &tray {
             tray.bind_controls(hotkey_settings.clone());
         }
+        let (dock_config, dock_status) = docking::start(
+            docking::Config {
+                enabled: shortcuts.dock_enabled,
+                side: shortcuts.dock_side,
+            },
+            stop.clone(),
+            cc.egui_ctx.clone(),
+        );
         Self {
             entries: directory,
             query: String::new(),
@@ -234,6 +260,8 @@ impl ZaapsApp {
             diagnostic_text: String::new(),
             compact_size: Vec2::new(460.0, 360.0),
             directory_size: Vec2::new(960.0, 750.0),
+            dock_config,
+            dock_status,
         }
     }
 
@@ -317,6 +345,7 @@ impl ZaapsApp {
                     }
                 }
                 self.shortcuts = self.draft.clone();
+                self.configure_docking();
                 let _ = self
                     .update_requests
                     .send(updates::Request::Enabled(self.shortcuts.check_updates));
@@ -447,6 +476,10 @@ impl ZaapsApp {
                             }
                             ui.add_space(6.0);
                         }
+                        ui.separator();
+                        ui.label(text("Accrochage des fenêtres", 13.0, WHITE));
+                        dock_controls(ui, &mut self.draft, "dock-settings");
+                        ui.label(text("Déplacer l'une entraîne l'autre. Chaque fenêtre garde sa taille. Accrochage en pause si une fenêtre est réduite, masquée ou agrandie au maximum.", 11.0, MUTED));
                         ui.separator();
                         ui.label(text("Confirmation de copie", 13.0, WHITE));
                         ui.horizontal_wrapped(|ui| {
@@ -681,6 +714,13 @@ impl ZaapsApp {
         self.diagnostic_open = open;
     }
 
+    fn configure_docking(&self) {
+        let _ = self.dock_config.send(docking::Config {
+            enabled: self.shortcuts.dock_enabled,
+            side: self.shortcuts.dock_side,
+        });
+    }
+
     fn route_panel(&mut self, ctx: &egui::Context) {
         let step = self
             .cache
@@ -805,6 +845,29 @@ impl ZaapsApp {
                                 format!("Version {} disponible — télécharger", release.version),
                                 &release.url,
                             );
+                        }
+                        ui.add_space(5.0);
+                        let mut prefs = self.shortcuts.clone();
+                        if dock_controls(ui, &mut prefs, "dock-route") {
+                            match prefs.save() {
+                                Ok(()) => {
+                                    self.shortcuts = prefs;
+                                    self.draft.dock_enabled = self.shortcuts.dock_enabled;
+                                    self.draft.dock_side = self.shortcuts.dock_side;
+                                    self.configure_docking();
+                                    if !self.settings_open {
+                                        let _ = self
+                                            .hotkey_settings
+                                            .send(Control::Configure(self.shortcuts.clone()));
+                                    }
+                                }
+                                Err(error) => self.show_notice(Notice::Error(error)),
+                            }
+                        }
+                        if self.shortcuts.dock_enabled {
+                            if let Ok(status) = self.dock_status.read() {
+                                ui.label(text(status.as_str(), 11.0, MUTED));
+                            }
                         }
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {

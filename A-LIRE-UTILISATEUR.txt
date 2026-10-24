@@ -1,4 +1,4 @@
-ZAAPS DOFUS 3 — 1.1.0
+ZAAPS DOFUS 3 — 1.1.1
 Windows 10/11 x64
 
 1. Fermer toute ancienne instance de Zaaps Dofus 3.
@@ -15,6 +15,14 @@ Ctrl+Shift+Z : afficher / masquer la fenêtre.
 La vue compacte affiche l'étape, le Zaap et la destination.
 « Afficher les 45 Zaaps » déplie le gestionnaire et sa recherche.
 Le mode compact est mémorisé au prochain lancement.
+
+« Accrocher à Ganymède » réunit les fenêtres. Choisir en haut, en bas,
+à gauche ou à droite : Zaaps se place de ce côté de Ganymède.
+Déplacer l'une entraîne l'autre ; redimensionner conserve l'alignement.
+Chaque fenêtre garde sa propre taille. L'option et le côté sont mémorisés.
+Décocher pour séparer les fenêtres. Option désactivée par défaut.
+L'accrochage est en pause si une fenêtre est masquée, réduite ou maximisée.
+Si l'écran manque de place, choisir un autre côté ou réduire les fenêtres.
 
 Le bouton − réduit le logiciel près de l'horloge. Les raccourcis et la
 copie automatique restent actifs. Cliquez sur l'icône pour le retrouver.

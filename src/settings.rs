@@ -21,6 +21,8 @@ pub struct Shortcuts {
     pub startup: bool,
     pub check_updates: bool,
     pub watch_clipboard: bool,
+    pub dock_enabled: bool,
+    pub dock_side: crate::docking::Side,
 }
 
 impl Default for Shortcuts {
@@ -37,6 +39,8 @@ impl Default for Shortcuts {
             startup: false,
             check_updates: true,
             watch_clipboard: true,
+            dock_enabled: false,
+            dock_side: crate::docking::Side::Bottom,
         }
     }
 }
@@ -86,6 +90,8 @@ impl Shortcuts {
                 "startup" => settings.startup = enabled,
                 "check_updates" => settings.check_updates = enabled,
                 "watch_clipboard" => settings.watch_clipboard = enabled,
+                "dock_enabled" => settings.dock_enabled = enabled,
+                "dock_side" => settings.dock_side = crate::docking::Side::parse(value),
                 "feedback" => {
                     settings.feedback = match value {
                         "sound" => Feedback::Sound,
@@ -134,10 +140,10 @@ impl Shortcuts {
     }
 
     fn to_ini(&self) -> String {
-        format!("zaap={}\r\ntravel={}\r\ncombined={}\r\ntoggle_auto={}\r\ntoggle_window={}\r\nautomatic={}\r\ncompact={}\r\nfeedback={}\r\nstartup={}\r\ncheck_updates={}\r\nwatch_clipboard={}\r\n",
+        format!("zaap={}\r\ntravel={}\r\ncombined={}\r\ntoggle_auto={}\r\ntoggle_window={}\r\nautomatic={}\r\ncompact={}\r\nfeedback={}\r\nstartup={}\r\ncheck_updates={}\r\nwatch_clipboard={}\r\ndock_enabled={}\r\ndock_side={}\r\n",
             self.zaap, self.travel, self.combined, self.toggle_auto, self.toggle_window,
             self.automatic, self.compact, match self.feedback { Feedback::Visual => "visual", Feedback::Sound => "sound", Feedback::Silent => "silent" },
-            self.startup, self.check_updates, self.watch_clipboard)
+            self.startup, self.check_updates, self.watch_clipboard, self.dock_enabled, self.dock_side.key())
     }
 
     pub fn save(&self) -> Result<(), String> {
@@ -177,6 +183,7 @@ mod tests {
         assert_eq!(value.keys()[..3], ["Alt+J", "Alt+K", "Alt+L"]);
         assert!(value.automatic && value.compact);
         assert!(!value.startup);
+        assert!(!value.dock_enabled);
         assert!(value.validate().is_ok());
     }
     #[test]
@@ -187,6 +194,8 @@ mod tests {
             watch_clipboard: false,
             check_updates: false,
             startup: true,
+            dock_enabled: true,
+            dock_side: crate::docking::Side::Right,
             ..Shortcuts::default()
         };
         assert_eq!(Shortcuts::from_ini(&value.to_ini()), value);
@@ -198,5 +207,20 @@ mod tests {
                 .validate()
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn docking_preferences_keep_each_side_and_unknown_values_are_safe() {
+        for side in crate::docking::Side::ALL {
+            let value = Shortcuts {
+                dock_enabled: true,
+                dock_side: side,
+                ..Shortcuts::default()
+            };
+            assert_eq!(Shortcuts::from_ini(&value.to_ini()), value);
+        }
+        let value = Shortcuts::from_ini("dock_side=invalid\ndock_enabled=false");
+        assert_eq!(value.dock_side, crate::docking::Side::Bottom);
+        assert!(!value.dock_enabled);
     }
 }

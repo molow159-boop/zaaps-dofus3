@@ -1,5 +1,12 @@
 # Historique des versions
 
+## 1.1.1
+
+- Accrochage facultatif de Zaaps à Ganymède : en haut, en bas, à gauche ou à droite.
+- Déplacement lié dans les deux sens, alignement conservé après redimensionnement et côté mémorisé.
+- Pause lorsque l'une des fenêtres est réduite, masquée ou maximisée ; contrôle de la place disponible à l'écran.
+- Tests de non-régression sur l'alignement, les déplacements, le redimensionnement et l'enregistrement des préférences.
+
 ## 1.1.0
 
 - Vue compacte mémorisée avec numéro d'étape, Zaap, destination et trois boutons de copie ; gestionnaire complet dépliable.

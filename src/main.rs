@@ -8,6 +8,7 @@ mod commands;
 mod data;
 mod desktop;
 mod diagnostics;
+mod docking;
 mod ganymede;
 mod hotkeys;
 mod settings;
