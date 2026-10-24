@@ -116,6 +116,8 @@ pub struct ZaapsApp {
     directory_size: Vec2,
     dock_config: mpsc::Sender<docking::Config>,
     dock_status: Arc<RwLock<String>>,
+    slim_layout: bool,
+    manager_open: bool,
 }
 
 fn text(value: impl Into<String>, size: f32, color: Color32) -> RichText {
@@ -194,6 +196,9 @@ impl ZaapsApp {
         let stop = Arc::new(AtomicBool::new(false));
         let cache = Arc::new(RwLock::new(Step::default()));
         let mut shortcuts = Shortcuts::load();
+        if shortcuts.dock_enabled {
+            shortcuts.compact = true;
+        }
         shortcuts.startup = desktop::startup_registered();
         let (tx, notices) = mpsc::channel();
         let (tray, tray_events, tray_error) = match tray::start(cc.egui_ctx.clone(), stop.clone()) {
@@ -227,6 +232,8 @@ impl ZaapsApp {
             cc.egui_ctx.clone(),
         );
         Self {
+            slim_layout: shortcuts.dock_enabled,
+            manager_open: false,
             entries: directory,
             query: String::new(),
             draft: shortcuts.clone(),
@@ -325,6 +332,9 @@ impl ZaapsApp {
     }
 
     fn save_settings(&mut self) {
+        if self.draft.dock_enabled {
+            self.draft.compact = true;
+        }
         if let Err(error) = self.draft.validate() {
             self.show_notice(Notice::Error(error));
             return;
@@ -523,6 +533,9 @@ impl ZaapsApp {
                         }
                         ui.label(text(&self.update_status, 11.0, MUTED));
                         ui.hyperlink_to("Voir les téléchargements", updates::RELEASES_URL);
+                        if ui.button("Diagnostic — aperçu avant partage").clicked() {
+                            self.open_diagnostic();
+                        }
                     });
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
@@ -569,7 +582,7 @@ impl ZaapsApp {
                     if drag.drag_started() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
                     }
-                    if drag.double_clicked() {
+                    if drag.double_clicked() && !self.shortcuts.dock_enabled {
                         self.switch_maximize(ctx);
                     }
                     if ui
@@ -622,6 +635,7 @@ impl ZaapsApp {
     }
 
     fn hide(&mut self, ctx: &egui::Context) {
+        self.manager_open = false;
         if self.settings_open {
             self.close_settings();
         }
@@ -719,6 +733,82 @@ impl ZaapsApp {
             enabled: self.shortcuts.dock_enabled,
             side: self.shortcuts.dock_side,
         });
+    }
+
+    fn sync_slim_layout(&mut self, ctx: &egui::Context) {
+        let slim = self.shortcuts.dock_enabled;
+        if slim == self.slim_layout {
+            return;
+        }
+        self.slim_layout = slim;
+        self.maximized = false;
+        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+        ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(if slim {
+            Vec2::new(400.0, 225.0)
+        } else {
+            Vec2::new(400.0, 300.0)
+        }));
+        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(if slim {
+            Vec2::new(460.0, 225.0)
+        } else {
+            self.compact_size
+        }));
+        self.configure_docking();
+    }
+
+    fn docked_windows(&mut self, ctx: &egui::Context) {
+        if self.manager_open {
+            ctx.show_viewport_immediate(
+                egui::ViewportId::from_hash_of("zaap-manager"),
+                egui::ViewportBuilder::default()
+                    .with_title("Gestionnaire de Zaaps")
+                    .with_inner_size(self.directory_size)
+                    .with_min_inner_size([400.0, 300.0]),
+                |ctx, _| {
+                    if ctx.input(|i| i.viewport().close_requested()) {
+                        self.manager_open = false;
+                    }
+                    self.footer(ctx);
+                    self.directory(ctx);
+                },
+            );
+        }
+        if self.settings_open && self.shortcuts.dock_enabled {
+            ctx.show_viewport_immediate(
+                egui::ViewportId::from_hash_of("zaap-settings"),
+                egui::ViewportBuilder::default()
+                    .with_title("Réglages — Zaaps Dofus 3")
+                    .with_inner_size([460.0, 640.0])
+                    .with_min_inner_size([400.0, 360.0]),
+                |ctx, _| {
+                    if ctx.input(|i| i.viewport().close_requested()) {
+                        self.close_settings();
+                    }
+                    egui::CentralPanel::default()
+                        .frame(egui::Frame::none().fill(BG))
+                        .show(ctx, |_| {});
+                    self.settings(ctx);
+                },
+            );
+        }
+        if self.diagnostic_open && self.shortcuts.dock_enabled {
+            ctx.show_viewport_immediate(
+                egui::ViewportId::from_hash_of("zaap-diagnostic"),
+                egui::ViewportBuilder::default()
+                    .with_title("Diagnostic — Zaaps Dofus 3")
+                    .with_inner_size([460.0, 560.0])
+                    .with_min_inner_size([400.0, 360.0]),
+                |ctx, _| {
+                    if ctx.input(|i| i.viewport().close_requested()) {
+                        self.diagnostic_open = false;
+                    }
+                    egui::CentralPanel::default()
+                        .frame(egui::Frame::none().fill(BG))
+                        .show(ctx, |_| {});
+                    self.diagnostic(ctx);
+                },
+            );
+        }
     }
 
     fn route_panel(&mut self, ctx: &egui::Context) {
@@ -823,6 +913,35 @@ impl ZaapsApp {
                             ui.add_space(5.0);
                             ui.label(text(error, 11.0, MUTED));
                         }
+                        if self.shortcuts.dock_enabled {
+                            ui.horizontal(|ui| {
+                                if ui.small_button("Afficher Zaaps").clicked() {
+                                    self.manager_open = true;
+                                }
+                                let status = self
+                                    .dock_status
+                                    .read()
+                                    .map(|s| s.clone())
+                                    .unwrap_or_default();
+                                let recent = self.toast_time.elapsed() < Duration::from_secs(4);
+                                let message = if self.clipboard_replaced {
+                                    "Commande remplacée — recopier le trajet"
+                                } else if recent {
+                                    if self.success {
+                                        "Commande copiée"
+                                    } else {
+                                        self.toast.as_str()
+                                    }
+                                } else if status != "Fenêtres accrochées" {
+                                    status.as_str()
+                                } else {
+                                    ""
+                                };
+                                ui.add(egui::Label::new(text(message, 10.0, MUTED)).truncate())
+                                    .on_hover_text(message);
+                            });
+                            return;
+                        }
                         if self.clipboard_replaced {
                             ui.add_space(5.0);
                             ui.label(text(
@@ -849,6 +968,9 @@ impl ZaapsApp {
                         ui.add_space(5.0);
                         let mut prefs = self.shortcuts.clone();
                         if dock_controls(ui, &mut prefs, "dock-route") {
+                            if prefs.dock_enabled {
+                                prefs.compact = true;
+                            }
                             match prefs.save() {
                                 Ok(()) => {
                                     self.shortcuts = prefs;
@@ -1287,6 +1409,13 @@ impl eframe::App for ZaapsApp {
         while let Ok(notice) = self.notices.try_recv() {
             if let Notice::WindowVisibility(visible) = notice {
                 self.hidden = !visible;
+                if !visible {
+                    self.manager_open = false;
+                    self.diagnostic_open = false;
+                    if self.settings_open {
+                        self.close_settings();
+                    }
+                }
                 ctx.send_viewport_cmd(egui::ViewportCommand::Visible(visible));
             } else {
                 self.show_notice(notice);
@@ -1336,8 +1465,11 @@ impl eframe::App for ZaapsApp {
                 tray.tip(format!("Zaaps Dofus 3 — {}", self.toast));
             }
         }
+        self.sync_slim_layout(ctx);
         self.heading(ctx);
-        if self.shortcuts.compact {
+        if self.shortcuts.dock_enabled {
+            // The attached companion has no footer or directory below its route.
+        } else if self.shortcuts.compact {
             self.compact_footer(ctx);
         } else {
             self.footer(ctx);
@@ -1350,8 +1482,15 @@ impl eframe::App for ZaapsApp {
         } else {
             self.directory(ctx);
         }
-        self.settings(ctx);
-        self.diagnostic(ctx);
+        if self.shortcuts.dock_enabled {
+            self.docked_windows(ctx);
+        } else {
+            self.settings(ctx);
+            self.diagnostic(ctx);
+            if self.manager_open {
+                self.docked_windows(ctx);
+            }
+        }
         self.resize_grips(ctx);
         self.window_corners.update(ctx.pixels_per_point());
         ctx.request_repaint_after(Duration::from_millis(200));
@@ -1364,5 +1503,96 @@ impl Drop for ZaapsApp {
         if let Some(tray) = &self.tray {
             tray.shutdown();
         }
+    }
+}
+
+#[cfg(test)]
+mod compact_tests {
+    use super::*;
+
+    #[test]
+    fn attached_route_and_directory_button_fit_in_225_pixels() {
+        let ctx = egui::Context::default();
+        let mut companion = None;
+        let output = ctx.run(
+            egui::RawInput {
+                screen_rect: Some(Rect::from_min_size(Pos2::ZERO, Vec2::new(460.0, 225.0))),
+                ..Default::default()
+            },
+            |ctx| {
+                let prefs = Shortcuts {
+                    dock_enabled: true,
+                    ..Shortcuts::default()
+                };
+                let mut app = ZaapsApp {
+                    entries: data::embedded().unwrap(),
+                    query: String::new(),
+                    draft: prefs.clone(),
+                    shortcuts: prefs,
+                    settings_open: false,
+                    recording: None,
+                    toast: String::new(),
+                    success: false,
+                    toast_time: Instant::now(),
+                    notices: mpsc::channel().1,
+                    hotkey_settings: mpsc::channel().0,
+                    stop: Arc::new(AtomicBool::new(true)),
+                    maximized: false,
+                    icons: Icons::new(ctx),
+                    window_corners: WindowCorners::default(),
+                    cache: Arc::new(RwLock::new(Step::from_text(
+                        "697/774\nEnsuite allez en [-14,37]",
+                        &data::embedded().unwrap(),
+                    ))),
+                    tray: None,
+                    tray_events: None,
+                    update_requests: mpsc::channel().0,
+                    update_notices: mpsc::channel().1,
+                    latest_release: None,
+                    update_status: String::new(),
+                    manual_update_check: false,
+                    hidden: false,
+                    exiting: false,
+                    initial_visibility_pending: false,
+                    clipboard_replaced: false,
+                    diagnostic_open: false,
+                    diagnostic_text: String::new(),
+                    compact_size: Vec2::new(460.0, 360.0),
+                    directory_size: Vec2::new(960.0, 750.0),
+                    dock_config: mpsc::channel().0,
+                    dock_status: Arc::new(RwLock::new("Fenêtres accrochées".into())),
+                    slim_layout: true,
+                    manager_open: false,
+                };
+                app.heading(ctx);
+                app.route_panel(ctx);
+                companion = Some(app);
+            },
+        );
+        let labels: Vec<_> = output
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::epaint::Shape::Text(t) => {
+                    Some((t.galley.job.text.as_str(), t.pos.y + t.galley.rect.max.y))
+                }
+                _ => None,
+            })
+            .collect();
+        for label in ["Zaap", "Travel", "Trajet complet", "Afficher Zaaps"] {
+            let bottom = labels
+                .iter()
+                .find(|(text, _)| *text == label)
+                .unwrap_or_else(|| panic!("Missing {label}: {labels:?}"))
+                .1;
+            assert!(
+                bottom <= 225.0,
+                "{label} extends below the compact window: {bottom}"
+            );
+        }
+        assert!(!labels
+            .iter()
+            .any(|(label, _)| label.contains("Accrocher à Ganymède") || *label == "Diagnostic"));
+        drop(companion);
     }
 }

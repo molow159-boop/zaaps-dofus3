@@ -340,18 +340,22 @@ pub fn start(
         let mut last_search = Instant::now() - Duration::from_secs(2);
         let mut message = String::new();
         let mut failed = false;
+        let mut settle_until = Instant::now() + Duration::from_millis(150);
         while !stop.load(Ordering::Relaxed) {
             match rx.recv_timeout(if config.enabled { Duration::from_millis(32) } else { Duration::from_millis(200) }) {
                 Ok(value) => {
                     config = value;
                     while let Ok(value) = rx.try_recv() { config = value; }
                     tracking = Tracking::default(); failed = false;
+                    settle_until = Instant::now() + Duration::from_millis(150);
                     last_search = Instant::now() - Duration::from_secs(2);
                 }
                 Err(mpsc::RecvTimeoutError::Disconnected) => break,
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
             }
-            let next = if !config.enabled { "" } else if failed {
+            let next = if !config.enabled { "" } else if Instant::now() < settle_until {
+                "Accrochage en cours…"
+            } else if failed {
                 "Déplacement indisponible : désactivez puis réactivez l'accrochage"
             } else {
                 if last_search.elapsed() >= Duration::from_secs(1) {

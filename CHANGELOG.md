@@ -2,6 +2,7 @@
 
 ## 1.1.2
 
+- Vue accrochée compacte de 225 pixels de haut, avec bouton « Afficher Zaaps » ouvrant le gestionnaire indépendamment ; réglages et diagnostic dans des fenêtres séparées.
 - Correction de l'accrochage lorsque la fenêtre technique de l'icône Ganymède était comptée comme une seconde fenêtre principale.
 - Exclusion des fenêtres d'outil, sans activation ou appartenant à une autre fenêtre ; conservation du refus en présence de deux véritables fenêtres principales.
 - Tests de non-régression sur la fenêtre principale et la fenêtre technique de notification.

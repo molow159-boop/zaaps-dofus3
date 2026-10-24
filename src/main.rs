@@ -17,7 +17,8 @@ mod updates;
 mod window_corners;
 
 fn main() -> eframe::Result {
-    let compact = hotkeys::Shortcuts::load().compact;
+    let prefs = hotkeys::Shortcuts::load();
+    let compact = prefs.compact;
     let icon = eframe::egui::IconData {
         rgba: include_bytes!("../assets/icon.rgba").to_vec(),
         width: 64,
@@ -26,12 +27,18 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Zaaps Dofus 3")
-            .with_inner_size(if compact {
+            .with_inner_size(if prefs.dock_enabled {
+                [460.0, 225.0]
+            } else if compact {
                 [460.0, 360.0]
             } else {
                 [960.0, 750.0]
             })
-            .with_min_inner_size([400.0, 300.0])
+            .with_min_inner_size(if prefs.dock_enabled {
+                [400.0, 225.0]
+            } else {
+                [400.0, 300.0]
+            })
             .with_decorations(false)
             .with_resizable(true)
             .with_icon(icon),

@@ -23,6 +23,9 @@ Chaque fenêtre garde sa propre taille. L'option et le côté sont mémorisés.
 Décocher pour séparer les fenêtres. Option désactivée par défaut.
 L'accrochage est en pause si une fenêtre est masquée, réduite ou maximisée.
 Si l'écran manque de place, choisir un autre côté ou réduire les fenêtres.
+La vue accrochée mesure environ 225 pixels de haut. « Afficher Zaaps »
+ouvre le gestionnaire à part. L'engrenage ouvre les réglages, avec le
+choix du côté, la désactivation de l'accrochage et le diagnostic.
 
 Le bouton − réduit le logiciel près de l'horloge. Les raccourcis et la
 copie automatique restent actifs. Cliquez sur l'icône pour le retrouver.

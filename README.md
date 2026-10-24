@@ -73,6 +73,8 @@ La vue compacte affiche le numéro d'étape reconnu, le Zaap et la destination. 
 
 Pour réunir les deux fenêtres, cochez **Accrocher à Ganymède** et choisissez **En haut**, **En bas**, **À gauche** ou **À droite**. Le côté décrit la position de Zaaps par rapport à Ganymède. Déplacer l'une déplace l'autre ; redimensionner une fenêtre conserve l'alignement sans changer la taille de l'autre. L'option et le côté sont mémorisés ; décochez l'option pour séparer les fenêtres.
 
+La vue accrochée se réduit automatiquement à environ **225 pixels de haut** : Auto, numéro d'étape, destination et trois boutons de copie. Le petit bouton **Afficher Zaaps** ouvre la liste et la recherche dans une fenêtre séparée, sans agrandir le compagnon. L'engrenage ouvre les réglages dans leur propre fenêtre ; le diagnostic y reste accessible.
+
 L'accrochage est suspendu si l'une des fenêtres est masquée, réduite ou agrandie au maximum, puis reprend après restauration. Le groupe reste dans la zone utilisable de l'écran de la fenêtre déplacée. Si les deux fenêtres n'y tiennent pas, choisissez un autre côté ou réduisez leur taille. Si plusieurs fenêtres Ganymède sont reconnues, l'accrochage attend qu'une seule reste visible. L'option est désactivée par défaut.
 
 Le bouton **−** réduit l'application près de l'horloge. Cliquez sur son icône pour la retrouver, ou utilisez **Ctrl+Shift+Z**. Le clic droit propose aussi la suspension d'Auto, la copie du trajet courant et **Quitter**. Le bouton **×** ferme complètement le logiciel. Si l'icône ne peut pas être créée, la réduction utilise la barre des tâches.
