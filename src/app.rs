@@ -331,7 +331,7 @@ impl ZaapsApp {
             .send(Control::Configure(self.shortcuts.clone()));
     }
 
-    fn save_settings(&mut self) {
+    fn save_settings(&mut self, ctx: &egui::Context) {
         if self.draft.dock_enabled {
             self.draft.compact = true;
         }
@@ -355,6 +355,7 @@ impl ZaapsApp {
                     }
                 }
                 self.shortcuts = self.draft.clone();
+                apply_window_level(ctx, &self.shortcuts);
                 self.configure_docking();
                 let _ = self
                     .update_requests
@@ -487,6 +488,9 @@ impl ZaapsApp {
                             ui.add_space(6.0);
                         }
                         ui.separator();
+                        ui.checkbox(&mut self.draft.always_on_top, "Toujours au premier plan");
+                        ui.label(text("Garder les fenêtres de Zaaps au-dessus des autres applications.", 11.0, MUTED));
+                        ui.separator();
                         ui.label(text("Accrochage des fenêtres", 13.0, WHITE));
                         dock_controls(ui, &mut self.draft, "dock-settings");
                         ui.label(text("Déplacer l'une entraîne l'autre. En haut ou en bas, Zaaps suit la largeur de Ganymède. Pause si une fenêtre est réduite, masquée ou maximisée.", 11.0, MUTED));
@@ -553,7 +557,7 @@ impl ZaapsApp {
                         )
                         .clicked()
                     {
-                        self.save_settings();
+                        self.save_settings(ctx);
                     }
                 });
             });
@@ -768,6 +772,7 @@ impl ZaapsApp {
                 egui::ViewportId::from_hash_of("zaap-manager"),
                 egui::ViewportBuilder::default()
                     .with_title("Gestionnaire de Zaaps")
+                    .with_window_level(self.shortcuts.window_level())
                     .with_inner_size(self.directory_size)
                     .with_min_inner_size([400.0, 300.0]),
                 |ctx, _| {
@@ -784,6 +789,7 @@ impl ZaapsApp {
                 egui::ViewportId::from_hash_of("zaap-settings"),
                 egui::ViewportBuilder::default()
                     .with_title("Réglages — Zaaps Dofus 3")
+                    .with_window_level(self.shortcuts.window_level())
                     .with_inner_size([460.0, 640.0])
                     .with_min_inner_size([400.0, 360.0]),
                 |ctx, _| {
@@ -802,6 +808,7 @@ impl ZaapsApp {
                 egui::ViewportId::from_hash_of("zaap-diagnostic"),
                 egui::ViewportBuilder::default()
                     .with_title("Diagnostic — Zaaps Dofus 3")
+                    .with_window_level(self.shortcuts.window_level())
                     .with_inner_size([460.0, 560.0])
                     .with_min_inner_size([400.0, 360.0]),
                 |ctx, _| {
@@ -1520,9 +1527,45 @@ impl Drop for ZaapsApp {
     }
 }
 
+fn apply_window_level(ctx: &egui::Context, prefs: &Shortcuts) {
+    // Les réglages peuvent être ouverts dans un viewport distinct de la fenêtre principale.
+    ctx.send_viewport_cmd_to(
+        egui::ViewportId::ROOT,
+        egui::ViewportCommand::WindowLevel(prefs.window_level()),
+    );
+    ctx.request_repaint_of(egui::ViewportId::ROOT);
+}
+
 #[cfg(test)]
 mod compact_tests {
     use super::*;
+
+    #[test]
+    fn foreground_setting_targets_root_and_can_be_disabled_without_creating_windows() {
+        let ctx = egui::Context::default();
+        for (enabled, expected) in [
+            (true, egui::WindowLevel::AlwaysOnTop),
+            (false, egui::WindowLevel::Normal),
+        ] {
+            let output = ctx.run(egui::RawInput::default(), |ctx| {
+                apply_window_level(
+                    ctx,
+                    &Shortcuts {
+                        always_on_top: enabled,
+                        ..Shortcuts::default()
+                    },
+                );
+            });
+            assert_eq!(
+                output.viewport_output.len(),
+                1,
+                "Aucune fenêtre supplémentaire ne doit être créée"
+            );
+            assert!(output.viewport_output[&egui::ViewportId::ROOT].commands.iter().any(|command|
+                matches!(command, egui::ViewportCommand::WindowLevel(level) if *level == expected)
+            ));
+        }
+    }
 
     #[test]
     fn attached_route_and_directory_button_fit_in_225_pixels() {

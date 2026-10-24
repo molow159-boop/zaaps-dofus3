@@ -1,5 +1,10 @@
 # Historique des versions
 
+## 1.1.4
+
+- Option « Toujours au premier plan » dans les réglages, désactivée par défaut et mémorisée entre les lancements.
+- Application à la fenêtre principale, au gestionnaire, aux réglages et au diagnostic dès l'enregistrement, avec retour à l'affichage normal lorsque l'option est désactivée.
+
 ## 1.1.3
 
 - Alignement sur les bords visibles des fenêtres, sans l'espace des bordures invisibles de Windows.

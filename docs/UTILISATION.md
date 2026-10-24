@@ -4,7 +4,7 @@
 
 ## Premier lancement
 
-1. Téléchargez **Zaaps-Dofus3-1.1.3-Windows-x64.zip** et extrayez entièrement l'archive dans le dossier de votre choix.
+1. Téléchargez **Zaaps-Dofus3-1.1.4-Windows-x64.zip** et extrayez entièrement l'archive dans le dossier de votre choix.
 2. Ouvrez Ganymède sur votre guide.
 3. Lancez **Zaaps Dofus 3.exe**. Rust n'est pas nécessaire pour utiliser cet exécutable.
 4. Vérifiez le numéro d'étape, le Zaap et la destination affichés dans le compagnon.
@@ -93,6 +93,10 @@ La vérification de version consulte GitHub au lancement puis toutes les six heu
 3. Extrayez le nouveau dossier, puis lancez son exécutable.
 
 Les préférences restent dans `%APPDATA%\Zaaps Dofus 3\raccourcis.ini`. Si vous utilisez un `zaaps.csv` personnalisé à côté de l'exécutable, conservez-le lors du remplacement du dossier.
+
+## Affichage au premier plan
+
+Dans les réglages, **Toujours au premier plan** garde les fenêtres de Zaaps au-dessus des autres applications. Cochez ou décochez l’option, puis cliquez sur **Enregistrer**. Le choix s’applique immédiatement et reste mémorisé au prochain lancement. Cette option est désactivée par défaut.
 
 ## Signaler une difficulté
 

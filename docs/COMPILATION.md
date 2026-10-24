@@ -14,7 +14,7 @@ Après l'installation, ouvrez une nouvelle fenêtre PowerShell. Le projet fixe R
 
 ## 2. Récupérer le projet complet
 
-Téléchargez **Zaaps-Dofus3-1.1.3-Sources.zip** depuis la [Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest) et extrayez-le. Vous pouvez aussi utiliser **Code → Download ZIP** sur la page du dépôt, ou cloner le dépôt avec Git :
+Téléchargez **Zaaps-Dofus3-1.1.4-Sources.zip** depuis la [Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest) et extrayez-le. Vous pouvez aussi utiliser **Code → Download ZIP** sur la page du dépôt, ou cloner le dépôt avec Git :
 
 ```powershell
 git clone https://github.com/molow159-boop/zaaps-dofus3.git

@@ -1,4 +1,4 @@
-ZAAPS DOFUS 3 — 1.1.3
+ZAAPS DOFUS 3 — 1.1.4
 Windows 10/11 x64
 
 1. Fermer toute ancienne instance de Zaaps Dofus 3.
@@ -49,6 +49,8 @@ ne sont pas utilisées pour ce voyage.
 Auto copie à la prochaine nouvelle étape reconnue. L'étape présente
 à l'activation sert de référence et n'est pas copiée automatiquement.
 Les raccourcis se modifient dans les réglages.
+« Toujours au premier plan » garde Zaaps au-dessus des autres applications.
+Cochez ou décochez cette option, puis Enregistrer ; le choix est mémorisé.
 
 Réglages : confirmation visuelle, son léger ou silence ; avertissement
 si la commande copiée est remplacée ; lancement avec Windows facultatif

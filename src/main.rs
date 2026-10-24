@@ -27,6 +27,7 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
             .with_title("Zaaps Dofus 3")
+            .with_window_level(prefs.window_level())
             .with_inner_size(if prefs.dock_enabled {
                 [460.0, 225.0]
             } else if compact {

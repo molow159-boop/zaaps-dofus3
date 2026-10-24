@@ -62,7 +62,7 @@ Le compagnon reste discret à côté de Ganymède. **Afficher Zaaps** ouvre le g
 
 ## Prise en main
 
-1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.1.3-Windows-x64.zip** et extrayez entièrement l'archive.
+1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.1.4-Windows-x64.zip** et extrayez entièrement l'archive.
 2. Ouvrez Ganymède sur votre guide, puis lancez **Zaaps Dofus 3.exe**.
 3. Cliquez sur un zaap ou utilisez un raccourci, puis collez la commande dans Dofus.
 
@@ -70,7 +70,7 @@ Pour garder le compagnon au premier plan de votre guide, ouvrez l'engrenage, act
 
 **Aucune installation de Rust n'est nécessaire.** Le logiciel copie les commandes dans le presse-papiers ; vous gardez la main sur leur utilisation dans Dofus.
 
-Le [guide d'utilisation](docs/UTILISATION.md) détaille les boutons, l'accrochage, Auto, les réglages et les mises à jour. Les **sources complètes** sont consultables ici dans le dépôt et disponibles dans **Zaaps-Dofus3-1.1.3-Sources.zip** sur la Release.
+Le [guide d'utilisation](docs/UTILISATION.md) détaille les boutons, l'accrochage, Auto, les réglages et les mises à jour. Les **sources complètes** sont consultables ici dans le dépôt et disponibles dans **Zaaps-Dofus3-1.1.4-Sources.zip** sur la Release.
 
 ## Vos raccourcis
 
@@ -95,6 +95,8 @@ La vue accrochée se réduit automatiquement à environ **225 pixels de haut** :
 L'accrochage est suspendu si l'une des fenêtres est masquée, réduite ou agrandie au maximum, puis reprend après restauration. Le groupe reste dans la zone utilisable de l'écran de la fenêtre déplacée. Si les deux fenêtres n'y tiennent pas, choisissez un autre côté ou réduisez leur taille. Si plusieurs fenêtres Ganymède sont reconnues, l'accrochage attend qu'une seule reste visible. L'option est désactivée par défaut.
 
 Le bouton **−** réduit l'application près de l'horloge. Cliquez sur son icône pour la retrouver, ou utilisez **Ctrl+Shift+Z**. Le clic droit propose aussi la suspension d'Auto, la copie du trajet courant et **Quitter**. Le bouton **×** ferme complètement le logiciel. Si l'icône ne peut pas être créée, la réduction utilise la barre des tâches.
+
+Dans les réglages, **Toujours au premier plan** garde les fenêtres de Zaaps au-dessus des autres applications. Cochez ou décochez l’option, puis cliquez sur **Enregistrer**. Le choix s’applique immédiatement et reste mémorisé au prochain lancement. Cette option est désactivée par défaut.
 
 Dans les réglages, choisissez une confirmation **visuelle**, un **son léger** ou le **silence**. Les notifications visuelles respectent les paramètres de notification de Windows. La surveillance du presse-papiers ne restaure jamais une ancienne commande automatiquement : **Recopier le trajet courant** relit la destination actuellement reconnue.
 

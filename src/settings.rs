@@ -17,6 +17,7 @@ pub struct Shortcuts {
     pub toggle_window: String,
     pub automatic: bool,
     pub compact: bool,
+    pub always_on_top: bool,
     pub feedback: Feedback,
     pub startup: bool,
     pub check_updates: bool,
@@ -35,6 +36,7 @@ impl Default for Shortcuts {
             toggle_window: "Ctrl+Shift+Z".into(),
             automatic: false,
             compact: true,
+            always_on_top: false,
             feedback: Feedback::Visual,
             startup: false,
             check_updates: true,
@@ -58,6 +60,14 @@ fn settings_path() -> PathBuf {
 }
 
 impl Shortcuts {
+    pub fn window_level(&self) -> eframe::egui::WindowLevel {
+        if self.always_on_top {
+            eframe::egui::WindowLevel::AlwaysOnTop
+        } else {
+            eframe::egui::WindowLevel::Normal
+        }
+    }
+
     pub fn keys(&self) -> [&str; 5] {
         [
             &self.zaap,
@@ -87,6 +97,7 @@ impl Shortcuts {
             match field.trim() {
                 "automatic" => settings.automatic = enabled,
                 "compact" => settings.compact = enabled,
+                "always_on_top" => settings.always_on_top = enabled,
                 "startup" => settings.startup = enabled,
                 "check_updates" => settings.check_updates = enabled,
                 "watch_clipboard" => settings.watch_clipboard = enabled,
@@ -140,9 +151,9 @@ impl Shortcuts {
     }
 
     fn to_ini(&self) -> String {
-        format!("zaap={}\r\ntravel={}\r\ncombined={}\r\ntoggle_auto={}\r\ntoggle_window={}\r\nautomatic={}\r\ncompact={}\r\nfeedback={}\r\nstartup={}\r\ncheck_updates={}\r\nwatch_clipboard={}\r\ndock_enabled={}\r\ndock_side={}\r\n",
+        format!("zaap={}\r\ntravel={}\r\ncombined={}\r\ntoggle_auto={}\r\ntoggle_window={}\r\nautomatic={}\r\ncompact={}\r\nalways_on_top={}\r\nfeedback={}\r\nstartup={}\r\ncheck_updates={}\r\nwatch_clipboard={}\r\ndock_enabled={}\r\ndock_side={}\r\n",
             self.zaap, self.travel, self.combined, self.toggle_auto, self.toggle_window,
-            self.automatic, self.compact, match self.feedback { Feedback::Visual => "visual", Feedback::Sound => "sound", Feedback::Silent => "silent" },
+            self.automatic, self.compact, self.always_on_top, match self.feedback { Feedback::Visual => "visual", Feedback::Sound => "sound", Feedback::Silent => "silent" },
             self.startup, self.check_updates, self.watch_clipboard, self.dock_enabled, self.dock_side.key())
     }
 
@@ -183,12 +194,14 @@ mod tests {
         assert_eq!(value.keys()[..3], ["Alt+J", "Alt+K", "Alt+L"]);
         assert!(value.automatic && value.compact);
         assert!(!value.startup);
+        assert!(!value.always_on_top);
         assert!(!value.dock_enabled);
         assert!(value.validate().is_ok());
     }
     #[test]
     fn all_preferences_round_trip_and_semantic_conflicts_are_detected() {
         let value = Shortcuts {
+            always_on_top: true,
             feedback: Feedback::Sound,
             compact: false,
             watch_clipboard: false,
@@ -207,6 +220,20 @@ mod tests {
                 .validate()
                 .is_ok()
         );
+    }
+
+    #[test]
+    fn disabling_always_on_top_survives_reload_without_changing_other_preferences() {
+        let mut value = Shortcuts::from_ini(
+            "zaap=Alt+J\ntravel=Alt+K\ncombined=Alt+L\nautomatic=true\ndock_enabled=true\ndock_side=left\nalways_on_top=true",
+        );
+        assert!(value.always_on_top);
+        let expected = Shortcuts {
+            always_on_top: false,
+            ..value.clone()
+        };
+        value.always_on_top = false;
+        assert_eq!(Shortcuts::from_ini(&value.to_ini()), expected);
     }
 
     #[test]
