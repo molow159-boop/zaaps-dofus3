@@ -1,5 +1,11 @@
 # Historique des versions
 
+## 1.0.3
+
+- Préparation du trajet vers la Tour des Voyageurs Dimensionnels en [-22,-24], via le Zaap Routes Rocailleuses en [-20,-20], lorsque la prochaine destination annoncée est Enutrosor, Srambad, Xélorium, Ecaflipus ou Osavora.
+- Distinction entre une dimension mentionnée dans l'action en cours et la prochaine destination : une mention de la Dimension Obscure ne bloque plus un trajet suivant clairement identifié.
+- Tests de non-régression sur les dimensions, les textes d'accessibilité fragmentés, les raccourcis et la copie automatique unique par changement d'étape.
+
 ## 1.0.2
 
 - Correction de la détection de « Cimetière primitif », désormais distingué du Zaap « Cimetière » d'Incarnam.

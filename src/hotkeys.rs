@@ -495,6 +495,36 @@ mod regression_tests {
 mod reader_cycle_tests {
     use super::*;
     use crate::{data, ganymede};
+
+    #[test]
+    fn dimensional_routes_are_confirmed_and_copied_once_per_new_step() {
+        let known = data::embedded().unwrap();
+        let cache = RwLock::new(Step::default());
+        let mut previous = None;
+        let mut auto = AutoCopy::new(true);
+        for (text, expected) in [
+            ("629/774\nEnsuite allez en Enutrosor en [1,2]", None),
+            ("630/774\nEnsuite allez en Srambad en [8,3]", Some("/zaap -20,-20; /zaap -20,-20; /travel -22 -24")),
+            ("631/774\nEnsuite allez en Xélorium en [1,2]", Some("/zaap -20,-20; /zaap -20,-20; /travel -22 -24")),
+            ("632/774\nParlez au personnage dans Srambad.", None),
+            ("643/774\nUne fois dans la Dimension Obscure, combattez un Panterreur.\nEnsuite allez en [7,20]\nZaap du Rivage sufokien", Some("/zaap 10,22; /zaap 10,22; /travel 7 20")),
+        ] {
+            let mut copies = Vec::new();
+            for cycle in 0..8 {
+                ganymede::refresh(&cache, &mut previous, &known, || Ok(text.into()));
+                let step = cache.read().unwrap();
+                if cycle == 0 {
+                    assert!(step.command(Action::Combined).is_err());
+                    assert!(step.zaap.is_none() && step.travel.is_none());
+                }
+                if let Some(command) = auto.observe(&step) {
+                    copies.push(command);
+                }
+            }
+            assert_eq!(copies, expected.into_iter().map(str::to_owned).collect::<Vec<_>>(), "{text}");
+        }
+    }
+
     #[test]
     fn shortcuts_remain_available_during_refresh_and_auto_follows_real_changes() {
         let known = data::embedded().unwrap();

@@ -48,30 +48,66 @@ impl Step {
                 return Self::unavailable("Plusieurs étapes visibles : lecture ambiguë");
             }
         }
-        // Coordinates in a dimension do not establish a route in the current world.
-        let normalized = normalize(text);
-        if ["xelorium", "dimension", "enutrosor", "srambad", "ecaflipus"]
-            .iter()
-            .any(|name| normalized.contains(name))
-        {
-            return Self {
-                identity: step_identity(text, None, None),
-                ..Self::unavailable("Destination dimensionnelle : trajet non vérifiable")
-            };
+        let next = next_route(text);
+        if let Some(route) = next {
+            let dimensions = next_dimensions(route);
+            if dimensions.len() == 1 {
+                // Divine-dimension coordinates belong to another world. Prepare
+                // access to the tower instead, using the configured Zaap list.
+                let mut tower_zaaps = known.iter().filter(|z| {
+                    normalize(&z.name) == "routes rocailleuses" && z.x == -20 && z.y == -20
+                });
+                let tower_zaap = tower_zaaps.next();
+                if let Some(zaap) = tower_zaap.filter(|_| tower_zaaps.next().is_none()) {
+                    let zaap = Some(zaap.command());
+                    let travel = Some("/travel -22 -24".to_owned());
+                    return Self {
+                        identity: step_identity(text, zaap.as_deref(), travel.as_deref()),
+                        zaap,
+                        travel,
+                        error: None,
+                        updated: Some(Instant::now()),
+                    };
+                }
+                return Self {
+                    identity: step_identity(text, None, None),
+                    ..Self::unavailable("Zaap d'accès à la Tour absent ou ambigu")
+                };
+            }
         }
-        let zaap = recommended_zaap(text, known).map(|z| z.command());
+        // A dimensional reference in the current action must not hide an
+        // explicit next world route. Both its transport and target must come
+        // from that next section, never from the preceding action.
+        let route = if mentions_dimension(text) {
+            match next.filter(|route| {
+                !mentions_dimension(route)
+                    && recommended_zaap(route, known).is_some()
+                    && travel_destination(route).is_some()
+            }) {
+                Some(route) => route,
+                None => {
+                    return Self {
+                        identity: step_identity(text, None, None),
+                        ..Self::unavailable("Destination dimensionnelle : trajet non vérifiable")
+                    };
+                }
+            }
+        } else {
+            text
+        };
+        let zaap = recommended_zaap(route, known).map(|z| z.command());
         static ZAAP_MENTION: OnceLock<Regex> = OnceLock::new();
         if zaap.is_none()
             && ZAAP_MENTION
                 .get_or_init(|| Regex::new(r"(?i)\bzaap\b").expect("expression régulière valide"))
-                .is_match(text)
+                .is_match(route)
         {
             return Self {
                 identity: step_identity(text, None, None),
                 ..Self::unavailable("Zaap recommandé absent ou ambigu")
             };
         }
-        let travel = travel_destination(text).map(|(x, y)| format!("/travel {} {}", x, y));
+        let travel = travel_destination(route).map(|(x, y)| format!("/travel {} {}", x, y));
         let identity = step_identity(text, zaap.as_deref(), travel.as_deref());
         Self {
             zaap,
@@ -118,6 +154,47 @@ impl Step {
             }
         }
     }
+}
+
+fn next_route(text: &str) -> Option<&str> {
+    static NEXT: OnceLock<Regex> = OnceLock::new();
+    let next = NEXT.get_or_init(|| {
+        Regex::new(r"(?i)\bensuite\s+(?:allez|aller|rendez[- ]vous|rejoignez|direction|destination|deplacez[- ]vous|déplacez[- ]vous)\b")
+            .expect("expression régulière valide")
+    });
+    let mut matches = next.find_iter(text);
+    let start = matches.next()?.start();
+    matches.next().is_none().then_some(&text[start..])
+}
+
+fn next_dimensions(route: &str) -> HashSet<String> {
+    static DIMENSIONS: OnceLock<Regex> = OnceLock::new();
+    let dimensions = DIMENSIONS.get_or_init(|| {
+        Regex::new(r"\b(?:enutrosor|srambad|xelorium|ecaflipus|osavora)\b")
+            .expect("expression régulière valide")
+    });
+    // Join fragmented accessibility nodes, but stop at coordinates or sentence
+    // boundaries so a later instruction cannot redefine the destination.
+    let joined = normalize(&route.split_whitespace().collect::<Vec<_>>().join(" "));
+    let heading = joined.split(['[', '.', ';', '!', '?']).next().unwrap_or("");
+    dimensions
+        .find_iter(heading)
+        .map(|name| name.as_str().to_owned())
+        .collect()
+}
+
+fn mentions_dimension(text: &str) -> bool {
+    let normalized = normalize(text);
+    [
+        "xelorium",
+        "dimension",
+        "enutrosor",
+        "srambad",
+        "ecaflipus",
+        "osavora",
+    ]
+    .iter()
+    .any(|name| normalized.contains(name))
 }
 
 pub fn travel_destination(text: &str) -> Option<(i32, i32)> {
@@ -471,6 +548,134 @@ mod tests {
         );
         step.updated = Some(Instant::now() - Duration::from_secs(5));
         assert!(step.command(Action::Combined).is_err());
+    }
+}
+
+#[cfg(test)]
+mod dimension_context_tests {
+    use super::*;
+
+    const STEP: &str = "[6,13]\n643/774\nEntrez dans la faille.\nPrenez le portail.\nUne fois dans la Dimension Obscure, combattez un Panterreur pour obtenir un Panterreur en personnage suiveur.\nEnsuite allez en [7,20]\nZaap du Rivage sufokien\n3 maps à gauche\n2 maps en haut";
+
+    #[test]
+    fn each_named_next_dimension_routes_to_the_tower() {
+        let known = crate::data::embedded().unwrap();
+        for name in [
+            "Enutrosor",
+            "Srambad",
+            "Xelorium",
+            "Xélorium",
+            "Ecaflipus",
+            "Écaflipus",
+            "la dimension Osavora",
+            "SRAMBAD",
+        ] {
+            for suffix in [" en [8,3]", ""] {
+                let text = format!("[-34,-58]\n630/774\nParlez à Larry Poller.\nVérifiez que vous avez les ressources suivantes :\n1 Venin d'Éperfide\n1 Pince de Lucrane\nEnsuite\nallez en\n{name}{suffix}");
+                let step = Step::from_text(&text, &known);
+                assert_eq!(step.identity.as_deref(), Some("step:630/774"));
+                assert_eq!(
+                    step.command(Action::Zaap).unwrap(),
+                    "/zaap -20,-20",
+                    "{text}"
+                );
+                assert_eq!(
+                    step.command(Action::Travel).unwrap(),
+                    "/travel -22 -24",
+                    "{text}"
+                );
+                assert_eq!(
+                    step.command(Action::Combined).unwrap(),
+                    "/zaap -20,-20; /zaap -20,-20; /travel -22 -24",
+                    "{text}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn tower_route_never_reuses_a_previous_route() {
+        let known = crate::data::embedded().unwrap();
+        let first = Step::from_text("629/774\nEnsuite allez en [1,2]\nZaap de Bonta", &known);
+        assert!(first.command(Action::Combined).is_ok());
+        let tower = Step::from_text("630/774\nEnsuite allez en Srambad en [8,3]", &known);
+        assert_eq!(
+            tower.command(Action::Combined).unwrap(),
+            "/zaap -20,-20; /zaap -20,-20; /travel -22 -24"
+        );
+        let empty = Step::from_text("631/774\nParlez au personnage de Srambad.", &known);
+        assert!(empty.zaap.is_none() && empty.travel.is_none());
+        assert!(empty.command(Action::Combined).is_err());
+    }
+
+    #[test]
+    fn tower_access_requires_an_unambiguous_known_zaap() {
+        let known = crate::data::embedded().unwrap();
+        let mut without_access = known.clone();
+        without_access.retain(|z| z.name != "Routes Rocailleuses");
+        let mut duplicate = known.clone();
+        duplicate.push(
+            known
+                .iter()
+                .find(|z| z.name == "Routes Rocailleuses")
+                .unwrap()
+                .clone(),
+        );
+        for directory in [without_access, duplicate] {
+            let step = Step::from_text("630/774\nEnsuite allez en Srambad en [8,3]", &directory);
+            assert!(step.command(Action::Combined).is_err());
+        }
+    }
+
+    #[test]
+    fn dimension_in_current_action_does_not_block_the_next_world_route() {
+        let known = crate::data::embedded().unwrap();
+        for text in [
+            STEP.to_owned(),
+            STEP.replace("Ensuite allez en", "Ensuite\nallez en")
+                .replace("Zaap du Rivage sufokien", "Zaap\ndu\nRivage sufokien"),
+        ] {
+            let step = Step::from_text(&text, &known);
+            assert_eq!(step.identity.as_deref(), Some("step:643/774"));
+            assert_eq!(step.command(Action::Zaap).unwrap(), "/zaap 10,22");
+            assert_eq!(step.command(Action::Travel).unwrap(), "/travel 7 20");
+            assert_eq!(
+                step.command(Action::Combined).unwrap(),
+                "/zaap 10,22; /zaap 10,22; /travel 7 20"
+            );
+        }
+    }
+
+    #[test]
+    fn only_the_next_route_supplies_coordinates_and_transport() {
+        let text = format!("Allez en [1,2]\nZaap de Bonta\n{STEP}");
+        let step = Step::from_text(&text, &crate::data::embedded().unwrap());
+        assert_eq!(
+            step.command(Action::Combined).unwrap(),
+            "/zaap 10,22; /zaap 10,22; /travel 7 20"
+        );
+    }
+
+    #[test]
+    fn dimensional_or_unconfirmed_next_routes_remain_blocked() {
+        let known = crate::data::embedded().unwrap();
+        for text in [
+            "643/774\nXélorium\nAllez en [7,20]",
+            "643/774\nDimension Obscure\nEnsuite allez en [7,20]",
+            "643/774\nDimension Obscure\nEnsuite allez en [7,20]\nZaapi du Rivage sufokien",
+            "643/774\nZaap du Rivage sufokien\nDimension Obscure\nEnsuite allez en [7,20]",
+            "643/774\nDimension Obscure\nEnsuite allez en [7,20] dans Xélorium\nZaap du Rivage sufokien",
+            "643/774\nDimension Obscure\nEnsuite allez en [7,20]\nZaap du Rivage sufokien\nZaap de Bonta",
+            "643/774\nDimension Obscure\nEnsuite allez en [7,20]\nAllez en [1,2]\nZaap du Rivage sufokien",
+            "643/774\nDimension Obscure\nEnsuite allez en [7,20]\nEnsuite allez en [7,20]\nZaap du Rivage sufokien",
+            "643/774\nEnsuite allez en Srambad ou Enutrosor en [8,3]",
+            "643/774\nEnsuite allez en Srambad en [8,3]\nEnsuite allez en Xélorium en [1,2]",
+        ] {
+            let step = Step::from_text(text, &known);
+            for action in [Action::Zaap, Action::Travel, Action::Combined] {
+                assert!(step.command(action).is_err(), "{text}");
+            }
+        }
     }
 }
 

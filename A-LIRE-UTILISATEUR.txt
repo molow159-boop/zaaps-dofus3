@@ -1,4 +1,4 @@
-ZAAPS DOFUS 3 — 1.0.2
+ZAAPS DOFUS 3 — 1.0.3
 Windows 10/11 x64
 
 1. Extraire entièrement l'archive.
@@ -12,6 +12,13 @@ Ctrl+L : copier le trajet complet disponible.
 Avec un Zaap et une destination : double /zaap puis /travel.
 Avec seulement un Zaapi ou sans Zaap : /travel seul si exploitable.
 Sans destination exploitable : aucune copie.
+
+Si la prochaine destination annoncée est Enutrosor, Srambad, Xélorium,
+Ecaflipus ou Osavora : trajet vers la Tour des Voyageurs Dimensionnels
+en [-22,-24], via le Zaap Routes Rocailleuses en [-20,-20].
+Ctrl+J copie le Zaap d'accès, Ctrl+K le voyage vers la Tour,
+Ctrl+L le trajet complet. Les coordonnées internes de la dimension
+ne sont pas utilisées pour ce voyage.
 
 Auto copie à la prochaine nouvelle étape reconnue. L'étape présente
 à l'activation sert de référence et n'est pas copiée automatiquement.

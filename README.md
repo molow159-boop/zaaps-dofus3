@@ -44,7 +44,7 @@ Retrouvez un zaap, préparez votre déplacement et copiez votre trajet sans ress
 
 ## Prise en main
 
-1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.0.2-Windows-x64.zip** et extrayez entièrement l'archive.
+1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.0.3-Windows-x64.zip** et extrayez entièrement l'archive.
 2. Ouvrez Ganymède sur votre guide, puis lancez **Zaaps Dofus 3.exe**.
 3. Cliquez sur un zaap ou utilisez un raccourci, puis collez la commande dans Dofus.
 
@@ -73,9 +73,10 @@ Avec un Zaap et une destination, le trajet complet contient deux commandes `/zaa
 | Zaap réel et destination exploitable | Double `/zaap`, puis `/travel`. |
 | Zaapi seul et destination exploitable | `/travel` uniquement ; le Zaapi est ignoré. |
 | Destination exploitable sans Zaap | `/travel` uniquement. |
+| Prochaine destination : Enutrosor, Srambad, Xélorium, Ecaflipus ou Osavora | Double `/zaap -20,-20`, puis `/travel -22 -24` vers la Tour des Voyageurs Dimensionnels. |
 | Aucune destination exploitable | Aucune copie. |
 
-Les noms usuels **Astrub, Bonta et Brâkmar** sont reconnus.
+Les noms usuels **Astrub, Bonta et Brâkmar** sont reconnus. Pour une prochaine destination dimensionnelle, les raccourcis préparent l'accès à la Tour : **Ctrl+J** copie son Zaap d'accès, **Ctrl+K** le voyage vers la Tour et **Ctrl+L** le trajet complet. Les coordonnées internes de la dimension ne sont pas utilisées dans le monde courant.
 
 ## Le mode automatique
 
@@ -90,7 +91,7 @@ La liste des zaaps est intégrée à l'exécutable. Un fichier `zaaps.csv` plac�
 
 Les préférences sont enregistrées dans `%APPDATA%\Zaaps Dofus 3\raccourcis.ini`.
 
-La détection dépend du texte accessible exposé par Ganymède. Les étapes incomplètes ou ambiguës sont refusées. Les destinations explicitement dimensionnelles, dont Xélorium, ne produisent pas de trajet si le monde courant ne peut pas être vérifié. Sans compteur, deux étapes dont le texte est identique ne peuvent pas être distinguées.
+La détection dépend du texte accessible exposé par Ganymède. Les étapes incomplètes ou ambiguës sont refusées. Une dimension doit être annoncée comme prochaine destination après « Ensuite allez… » pour préparer l'accès à la Tour. Une simple mention dans l'action en cours ne déclenche pas cette redirection ; un trajet suivant clairement identifié avec son Zaap reste disponible. Sans compteur, deux étapes dont le texte est identique ne peuvent pas être distinguées.
 
 L'exécutable n'est pas signé numériquement. Le fichier `SHA256.txt` de la Release permet de vérifier l'intégrité des téléchargements.
 
