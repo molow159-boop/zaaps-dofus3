@@ -1,4 +1,4 @@
-ZAAPS DOFUS 3 — 1.1.1
+ZAAPS DOFUS 3 — 1.1.2
 Windows 10/11 x64
 
 1. Fermer toute ancienne instance de Zaaps Dofus 3.

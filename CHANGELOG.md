@@ -1,5 +1,11 @@
 # Historique des versions
 
+## 1.1.2
+
+- Correction de l'accrochage lorsque la fenêtre technique de l'icône Ganymède était comptée comme une seconde fenêtre principale.
+- Exclusion des fenêtres d'outil, sans activation ou appartenant à une autre fenêtre ; conservation du refus en présence de deux véritables fenêtres principales.
+- Tests de non-régression sur la fenêtre principale et la fenêtre technique de notification.
+
 ## 1.1.1
 
 - Accrochage facultatif de Zaaps à Ganymède : en haut, en bas, à gauche ou à droite.

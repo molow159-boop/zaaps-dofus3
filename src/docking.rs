@@ -19,9 +19,10 @@ use windows::{
             PROCESS_QUERY_LIMITED_INFORMATION,
         },
         UI::WindowsAndMessaging::{
-            EnumWindows, GetGUIThreadInfo, GetWindowRect, GetWindowTextW, GetWindowThreadProcessId,
-            IsIconic, IsWindow, IsWindowVisible, IsZoomed, SetWindowPos, GUITHREADINFO,
-            SWP_ASYNCWINDOWPOS, SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER,
+            EnumWindows, GetGUIThreadInfo, GetWindow, GetWindowLongPtrW, GetWindowRect,
+            GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
+            IsZoomed, SetWindowPos, GUITHREADINFO, GWL_EXSTYLE, GW_OWNER, SWP_ASYNCWINDOWPOS,
+            SWP_NOACTIVATE, SWP_NOSIZE, SWP_NOZORDER, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
         },
     },
 };
@@ -252,8 +253,25 @@ fn guide_process(window: HWND) -> bool {
     }
 }
 
+fn primary_candidate(visible: bool, owned: bool, has_area: bool, exstyle: u32) -> bool {
+    // Ganymede's notification icon is itself a visible, titled 16x16 tool window.
+    // Size alone cannot distinguish a real application window from a helper.
+    visible && !owned && has_area && exstyle & (WS_EX_TOOLWINDOW.0 | WS_EX_NOACTIVATE.0) == 0
+}
+
+fn primary_window(window: HWND) -> bool {
+    unsafe {
+        primary_candidate(
+            IsWindowVisible(window).as_bool(),
+            GetWindow(window, GW_OWNER).is_ok_and(|owner| !owner.is_invalid()),
+            rect(window).is_some(),
+            GetWindowLongPtrW(window, GWL_EXSTYLE) as u32,
+        )
+    }
+}
+
 unsafe extern "system" fn collect(window: HWND, context: LPARAM) -> BOOL {
-    if IsWindowVisible(window).as_bool() && guide_process(window) {
+    if primary_window(window) && guide_process(window) {
         (*(context.0 as *mut Vec<HWND>)).push(window);
     }
     BOOL(1)
@@ -371,7 +389,7 @@ pub fn start(
                                     let work = work_area(if leader == Leader::App { app } else { guide });
                                     if let Some(target) = work.and_then(|area| align(pair, config.side, leader, area)) {
                                         // Revalidate the foreign process immediately before any movement.
-                                        if !guide_process(guide) { tracking = Tracking::default(); "Ganymède indisponible" }
+                                        if !primary_window(guide) || !guide_process(guide) { tracking = Tracking::default(); "Ganymède indisponible" }
                                         else if (target.app == pair.app || position(app, target.app))
                                             && (target.guide == pair.guide || position(guide, target.guide)) {
                                             tracking.submitted(pair, target);
@@ -399,6 +417,59 @@ pub fn start(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ganymede_notification_window_is_not_a_second_main_window() {
+        let real = primary_candidate(true, false, true, 0x40118);
+        let notification = primary_candidate(true, false, true, 0x80800a0);
+        assert!(real);
+        assert!(!notification);
+        assert_eq!(
+            [real, notification]
+                .into_iter()
+                .filter(|value| *value)
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn helpers_are_ignored_but_two_real_windows_remain_ambiguous() {
+        assert!(!primary_candidate(true, true, true, 0));
+        assert!(!primary_candidate(false, false, true, 0));
+        assert!(!primary_candidate(true, false, false, 0));
+        assert!(!primary_candidate(true, false, true, WS_EX_TOOLWINDOW.0));
+        assert!(!primary_candidate(true, false, true, WS_EX_NOACTIVATE.0));
+        assert_eq!(
+            [0x40118, 0x40118, 0x80800a0]
+                .into_iter()
+                .filter(|flags| primary_candidate(true, false, true, *flags))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    #[ignore = "read-only inspection of a running Ganymede window"]
+    fn native_running_guide_has_one_primary_window() {
+        let mut found = Vec::<HWND>::new();
+        unsafe {
+            EnumWindows(Some(collect), LPARAM(&mut found as *mut _ as isize)).unwrap();
+        }
+        println!("Candidate count: {}", found.len());
+        for window in &found {
+            let bounds = rect(*window);
+            unsafe {
+                println!(
+                    "Candidate {:?}: bounds={bounds:?}, owner={:?}, exstyle={:#x}",
+                    window,
+                    GetWindow(*window, GW_OWNER).ok(),
+                    GetWindowLongPtrW(*window, GWL_EXSTYLE)
+                );
+            }
+        }
+        assert_eq!(found.len(), 1, "one main Ganymede window must be selected");
+    }
     fn pair() -> Pair {
         Pair {
             app: Bounds {

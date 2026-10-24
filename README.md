@@ -49,7 +49,7 @@ Retrouvez un zaap, préparez votre déplacement et copiez votre trajet sans ress
 
 ## Prise en main
 
-1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.1.1-Windows-x64.zip** et extrayez entièrement l'archive.
+1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.1.2-Windows-x64.zip** et extrayez entièrement l'archive.
 2. Ouvrez Ganymède sur votre guide, puis lancez **Zaaps Dofus 3.exe**.
 3. Cliquez sur un zaap ou utilisez un raccourci, puis collez la commande dans Dofus.
 
