@@ -181,14 +181,41 @@ fn next_dimensions(route: &str) -> HashSet<String> {
         Regex::new(r"\b(?:enutrosor|srambad|xelorium|ecaflipus|osavora)\b")
             .expect("expression régulière valide")
     });
-    // Join fragmented accessibility nodes, but stop at coordinates or sentence
-    // boundaries so a later instruction cannot redefine the destination.
+    // Accessibility nodes may split the destination across lines. A dimension
+    // can precede the coordinates or immediately qualify them, but a later
+    // instruction must not redefine this destination.
     let joined = normalize(&route.split_whitespace().collect::<Vec<_>>().join(" "));
     let heading = joined.split(['[', '.', ';', '!', '?']).next().unwrap_or("");
-    dimensions
+    let mut found: HashSet<String> = dimensions
         .find_iter(heading)
         .map(|name| name.as_str().to_owned())
-        .collect()
+        .collect();
+    static COORDINATES: OnceLock<Regex> = OnceLock::new();
+    static DIMENSION_SUFFIX: OnceLock<Regex> = OnceLock::new();
+    let coordinates = COORDINATES.get_or_init(|| {
+        Regex::new(r"\[\s*-?\d{1,3}\s*[,;]\s*-?\d{1,3}\s*\]").expect("expression régulière valide")
+    });
+    let dimension_suffix = DIMENSION_SUFFIX.get_or_init(|| {
+        Regex::new(r"^\s*(?:dans|en|sur)\s+(?:(?:la|le)\s+)?(?:dimension\s+)?(?:enutrosor|srambad|xelorium|ecaflipus|osavora)\b")
+            .expect("expression régulière valide")
+    });
+    if let Some(point) = coordinates.find(&joined) {
+        let before = &joined[..point.start()];
+        if !before.contains(['[', '.', ';', '!', '?']) {
+            let suffix = joined[point.end()..]
+                .split(['[', '.', ';', '!', '?'])
+                .next()
+                .unwrap_or("");
+            if dimension_suffix.is_match(suffix) {
+                found.extend(
+                    dimensions
+                        .find_iter(suffix)
+                        .map(|name| name.as_str().to_owned()),
+                );
+            }
+        }
+    }
+    found
 }
 
 fn mentions_dimension(text: &str) -> bool {
@@ -602,6 +629,56 @@ mod dimension_context_tests {
     }
 
     #[test]
+    fn coordinates_before_the_named_dimension_prepare_tower_access() {
+        let known = crate::data::embedded().unwrap();
+        let screenshot = "[-32,-57]\n718/774\nParlez à Amayiro pour finir la quête À glacer le sang.\nReparlez lui pour lancer la quête À l'ombre des murs.\nEnsuite allez en [2,2] dans la dimension Srambad.";
+        for text in [
+            screenshot.to_owned(),
+            screenshot.replace(
+                "[2,2] dans la dimension Srambad",
+                "[2,2]\ndans la\ndimension\nSrambad",
+            ),
+        ] {
+            let step = Step::from_text(&text, &known);
+            assert_eq!(step.progress(), Some("718/774"));
+            assert_eq!(step.command(Action::Zaap).unwrap(), "/zaap -20,-20");
+            assert_eq!(step.command(Action::Travel).unwrap(), "/travel -22 -24");
+            assert_eq!(
+                step.command(Action::Combined).unwrap(),
+                "/zaap -20,-20; /zaap -20,-20; /travel -22 -24"
+            );
+        }
+        for name in ["Enutrosor", "Srambad", "Xélorium", "Écaflipus", "Osavora"] {
+            for connector in ["dans la dimension", "dans", "en"] {
+                let text = format!("718/774\nEnsuite allez en [2,2] {connector} {name}.");
+                let step = Step::from_text(&text, &known);
+                assert_eq!(
+                    step.command(Action::Combined).unwrap(),
+                    "/zaap -20,-20; /zaap -20,-20; /travel -22 -24",
+                    "{text}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn dimension_in_a_later_instruction_is_not_a_tower_destination() {
+        let known = crate::data::embedded().unwrap();
+        for text in [
+            "718/774\nEnsuite allez en [2,2]. Dans la dimension Srambad, parlez au PNJ.",
+            "718/774\nEnsuite allez en [2,2]\nParlez au voyageur de Srambad.",
+            "718/774\nEnsuite allez en [2,2] puis cherchez le portail vers Srambad.",
+            "718/774\nEnsuite allez en [2,2] dans la dimension inconnue.",
+            "718/774\nEnsuite allez en [2,2] dans la dimension Srambad ou Enutrosor.",
+            "718/774\nEnsuite allez en Enutrosor en [2,2] dans la dimension Srambad.",
+        ] {
+            let step = Step::from_text(text, &known);
+            assert!(step.zaap.is_none() && step.travel.is_none(), "{text}");
+            assert!(step.command(Action::Combined).is_err(), "{text}");
+        }
+    }
+
+    #[test]
     fn tower_route_never_reuses_a_previous_route() {
         let known = crate::data::embedded().unwrap();
         let first = Step::from_text("629/774\nEnsuite allez en [1,2]\nZaap de Bonta", &known);
@@ -672,7 +749,6 @@ mod dimension_context_tests {
             "643/774\nDimension Obscure\nEnsuite allez en [7,20]",
             "643/774\nDimension Obscure\nEnsuite allez en [7,20]\nZaapi du Rivage sufokien",
             "643/774\nZaap du Rivage sufokien\nDimension Obscure\nEnsuite allez en [7,20]",
-            "643/774\nDimension Obscure\nEnsuite allez en [7,20] dans Xélorium\nZaap du Rivage sufokien",
             "643/774\nDimension Obscure\nEnsuite allez en [7,20]\nZaap du Rivage sufokien\nZaap de Bonta",
             "643/774\nDimension Obscure\nEnsuite allez en [7,20]\nAllez en [1,2]\nZaap du Rivage sufokien",
             "643/774\nDimension Obscure\nEnsuite allez en [7,20]\nEnsuite allez en [7,20]\nZaap du Rivage sufokien",

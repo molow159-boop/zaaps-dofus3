@@ -62,7 +62,7 @@ Le compagnon reste discret à côté de Ganymède. **Afficher Zaaps** ouvre le g
 
 ## Prise en main
 
-1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.1.4-Windows-x64.zip** et extrayez entièrement l'archive.
+1. Dans la [dernière Release](https://github.com/molow159-boop/zaaps-dofus3/releases/latest), téléchargez **Zaaps-Dofus3-1.1.5-Windows-x64.zip** et extrayez entièrement l'archive.
 2. Ouvrez Ganymède sur votre guide, puis lancez **Zaaps Dofus 3.exe**.
 3. Cliquez sur un zaap ou utilisez un raccourci, puis collez la commande dans Dofus.
 
@@ -70,7 +70,7 @@ Pour garder le compagnon au premier plan de votre guide, ouvrez l'engrenage, act
 
 **Aucune installation de Rust n'est nécessaire.** Le logiciel copie les commandes dans le presse-papiers ; vous gardez la main sur leur utilisation dans Dofus.
 
-Le [guide d'utilisation](docs/UTILISATION.md) détaille les boutons, l'accrochage, Auto, les réglages et les mises à jour. Les **sources complètes** sont consultables ici dans le dépôt et disponibles dans **Zaaps-Dofus3-1.1.4-Sources.zip** sur la Release.
+Le [guide d'utilisation](docs/UTILISATION.md) détaille les boutons, l'accrochage, Auto, les réglages et les mises à jour. Les **sources complètes** sont consultables ici dans le dépôt et disponibles dans **Zaaps-Dofus3-1.1.5-Sources.zip** sur la Release.
 
 ## Vos raccourcis
 

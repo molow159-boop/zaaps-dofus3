@@ -4,7 +4,7 @@
 
 ## Premier lancement
 
-1. Téléchargez **Zaaps-Dofus3-1.1.4-Windows-x64.zip** et extrayez entièrement l'archive dans le dossier de votre choix.
+1. Téléchargez **Zaaps-Dofus3-1.1.5-Windows-x64.zip** et extrayez entièrement l'archive dans le dossier de votre choix.
 2. Ouvrez Ganymède sur votre guide.
 3. Lancez **Zaaps Dofus 3.exe**. Rust n'est pas nécessaire pour utiliser cet exécutable.
 4. Vérifiez le numéro d'étape, le Zaap et la destination affichés dans le compagnon.

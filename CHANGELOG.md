@@ -1,5 +1,11 @@
 # Historique des versions
 
+## 1.1.5
+
+- Reconnaissance des destinations où la dimension suit les coordonnées, comme « Ensuite allez en [2,2] dans la dimension Srambad ».
+- Préparation du trajet vers la Tour des Voyageurs Dimensionnels pour ces formulations, y compris lorsque les éléments sont séparés dans la lecture de Ganymède.
+- Tests de non-régression sur les cinq dimensions, les mentions hors destination et la copie automatique unique après confirmation.
+
 ## 1.1.4
 
 - Option « Toujours au premier plan » dans les réglages, désactivée par défaut et mémorisée entre les lancements.

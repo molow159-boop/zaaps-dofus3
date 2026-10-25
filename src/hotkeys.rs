@@ -588,6 +588,8 @@ mod reader_cycle_tests {
             ("630/774\nEnsuite allez en Srambad en [8,3]", Some("/zaap -20,-20; /zaap -20,-20; /travel -22 -24")),
             ("631/774\nEnsuite allez en Xélorium en [1,2]", Some("/zaap -20,-20; /zaap -20,-20; /travel -22 -24")),
             ("632/774\nParlez au personnage dans Srambad.", None),
+            ("718/774\nEnsuite allez en [2,2] dans la dimension Srambad.", Some("/zaap -20,-20; /zaap -20,-20; /travel -22 -24")),
+            ("719/774\nParlez à un personnage dans Srambad.", None),
             ("643/774\nUne fois dans la Dimension Obscure, combattez un Panterreur.\nEnsuite allez en [7,20]\nZaap du Rivage sufokien", Some("/zaap 10,22; /zaap 10,22; /travel 7 20")),
         ] {
             let mut copies = Vec::new();
