@@ -1,5 +1,11 @@
 # Historique des versions
 
+## 1.1.6
+
+- Reconnaissance de « Dune des ossements », « Dunes des ossement » et « Dune des ossement » pour le Zaap officiel « Dunes des ossements », sans modifier son nom ni ses coordonnées.
+- Prise en compte des destinations annoncées par « Partez en », notamment l'étape 37/101 vers [12,-65].
+- Tests de non-régression sur les variantes, les liens fragmentés, les Zaapis, les noms ambigus et la copie automatique unique.
+
 ## 1.1.5
 
 - Reconnaissance des destinations où la dimension suit les coordonnées, comme « Ensuite allez en [2,2] dans la dimension Srambad ».

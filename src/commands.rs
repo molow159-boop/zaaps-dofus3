@@ -167,7 +167,7 @@ impl Step {
 fn next_route(text: &str) -> Option<&str> {
     static NEXT: OnceLock<Regex> = OnceLock::new();
     let next = NEXT.get_or_init(|| {
-        Regex::new(r"(?i)\bensuite\s+(?:allez|aller|rendez[- ]vous|rejoignez|direction|destination|deplacez[- ]vous|déplacez[- ]vous)\b")
+        Regex::new(r"(?i)\bensuite\s+(?:allez|aller|partez|rendez[- ]vous|rejoignez|direction|destination|deplacez[- ]vous|déplacez[- ]vous)\b")
             .expect("expression régulière valide")
     });
     let mut matches = next.find_iter(text);
@@ -238,7 +238,7 @@ pub fn travel_destination(text: &str) -> Option<(i32, i32)> {
     static DESTINATION: OnceLock<Regex> = OnceLock::new();
     static ZAAPI: OnceLock<Regex> = OnceLock::new();
     let destination = DESTINATION.get_or_init(|| Regex::new(
-        r"(?i)\b(?:ensuite\s+)?(?:allez|aller|rendez[- ]vous|rejoignez|direction|destination|deplacez[- ]vous|déplacez[- ]vous)\b.{0,42}?\[?\s*(-?\d{1,3})\s*[,;]\s*(-?\d{1,3})\s*\]?"
+        r"(?i)\b(?:ensuite\s+)?(?:allez|aller|partez|rendez[- ]vous|rejoignez|direction|destination|deplacez[- ]vous|déplacez[- ]vous)\b.{0,42}?\[?\s*(-?\d{1,3})\s*[,;]\s*(-?\d{1,3})\s*\]?"
     ).expect("expression régulière valide"));
     let zaapi =
         ZAAPI.get_or_init(|| Regex::new(r"(?i)\bzaapi?\b").expect("expression régulière valide"));
@@ -334,6 +334,10 @@ pub fn recommended_zaap<'a>(text: &str, known: &'a [Zaap]) -> Option<&'a Zaap> {
     static ENSEVELI: OnceLock<Regex> = OnceLock::new();
     let enseveli = ENSEVELI
         .get_or_init(|| Regex::new(r"\bvillage ensevelli\b").expect("expression régulière valide"));
+    static DUNES: OnceLock<Regex> = OnceLock::new();
+    let dunes = DUNES.get_or_init(|| {
+        Regex::new(r"\bdunes? des ossements?\b").expect("expression régulière valide")
+    });
     let names: Vec<String> = known.iter().map(|zaap| normalize(&zaap.name)).collect();
     let mut matches = HashSet::new();
 
@@ -356,6 +360,7 @@ pub fn recommended_zaap<'a>(text: &str, known: &'a [Zaap]) -> Option<&'a Zaap> {
             // Accept the spelling used by some Ganymede instructions while
             // preserving the directory's canonical name and coordinates.
             let label = enseveli.replace_all(&label, "village enseveli");
+            let label = dunes.replace_all(&label, "dunes des ossements");
             let mut occurrences = Vec::new();
             for (index, name) in names.iter().enumerate() {
                 for (start, _) in label.match_indices(name.as_str()) {
@@ -866,6 +871,107 @@ mod fragmented_accessibility_tests {
             assert!(Step::from_text(&text, &known)
                 .command(Action::Combined)
                 .is_err());
+        }
+    }
+}
+
+#[cfg(test)]
+mod dunes_tests {
+    use super::*;
+
+    #[test]
+    fn singular_and_plural_dunes_names_resolve_to_the_canonical_zaap() {
+        let known = crate::data::embedded().unwrap();
+        for name in [
+            "Dunes des ossements",
+            "Dune des ossements",
+            "Dunes des ossement",
+            "Dune des ossement",
+            "DUNE DES OSSEMENT",
+        ] {
+            for label in [
+                format!("Zaap de la {name}"),
+                format!("Zaap\nde la\n{}", name.replace(' ', "\n")),
+            ] {
+                let zaap = recommended_zaap(&label, &known).expect(&label);
+                assert_eq!(zaap.name, "Dunes des ossements");
+                assert_eq!(zaap.command(), "/zaap 15,-58");
+            }
+        }
+        assert_eq!(known.len(), 45);
+    }
+
+    #[test]
+    fn actual_dune_step_recognizes_partez_and_all_three_commands() {
+        let text = "[-4,8]\n37/101\nParlez à Ralag Vivargent pour Rester prudent et tenter de contourner le groupe.\nAstuces :\nUn combat à vague seul peut se lancer.\nSi tel est le cas, retrouvez Valdi Vivargent 2 maps à droite après le combat.\nUne fois téléporté, parlez à Valdi Vivargent.\nUne fois téléporté, reparlez à Valdi Vivargent.\nPartez en [12,-65] :\nZaap de la Dune des ossements\n1 map en bas\n1 map à droite\nChar à voile vers le Territoire Cacterre\n2 maps en haut";
+        let step = Step::from_text(text, &crate::data::embedded().unwrap());
+        assert_eq!(step.progress(), Some("37/101"));
+        assert_eq!(step.command(Action::Zaap).unwrap(), "/zaap 15,-58");
+        assert_eq!(step.command(Action::Travel).unwrap(), "/travel 12 -65");
+        assert_eq!(
+            step.command(Action::Combined).unwrap(),
+            "/zaap 15,-58; /zaap 15,-58; /travel 12 -65"
+        );
+    }
+
+    #[test]
+    fn dune_variants_keep_zaapis_ambiguity_and_word_boundaries_safe() {
+        let known = crate::data::embedded().unwrap();
+        for name in [
+            "Dunes des ossements",
+            "Dune des ossements",
+            "Dunes des ossement",
+            "Dune des ossement",
+        ] {
+            let zaapi = Step::from_text(
+                &format!("37/101\nPartez en [12,-65]\nZaapi de la {name}"),
+                &known,
+            );
+            assert!(zaapi.command(Action::Zaap).is_err());
+            assert_eq!(zaapi.command(Action::Combined).unwrap(), "/travel 12 -65");
+            let ambiguous = Step::from_text(
+                &format!("37/101\nPartez en [12,-65]\nZaap de la {name}\nZaap de Bonta"),
+                &known,
+            );
+            assert!(ambiguous.command(Action::Combined).is_err());
+        }
+        for name in [
+            "Dunette des ossements",
+            "Dune des ossementsanciens",
+            "Dune des ossements2",
+            "GrandeDune des ossement",
+        ] {
+            assert!(
+                recommended_zaap(&format!("Zaap de la {name}"), &known).is_none(),
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn partez_destinations_keep_current_position_and_other_routes_separate() {
+        let known = crate::data::embedded().unwrap();
+        let travel_only = Step::from_text("[15,-58]\n37/101\nPartez en [12,-65]", &known);
+        assert!(travel_only.command(Action::Zaap).is_err());
+        assert_eq!(
+            travel_only.command(Action::Combined).unwrap(),
+            "/travel 12 -65"
+        );
+        let next_world = Step::from_text("37/101\nUne fois sorti de la dimension Srambad.\nEnsuite partez en [12,-65]\nZaap de la Dune des ossements", &known);
+        assert_eq!(
+            next_world.command(Action::Combined).unwrap(),
+            "/zaap 15,-58; /zaap 15,-58; /travel 12 -65"
+        );
+        for text in [
+            "37/101\nPartez en [12,-65]\nPartez en [13,-65]\nZaap de la Dune des ossements",
+            "37/101\nPartez retrouver le personnage.\nZaap de la Dune des ossements",
+        ] {
+            assert!(
+                Step::from_text(text, &known)
+                    .command(Action::Combined)
+                    .is_err(),
+                "{text}"
+            );
         }
     }
 }

@@ -578,7 +578,7 @@ mod reader_cycle_tests {
     use crate::{data, ganymede};
 
     #[test]
-    fn dimensional_routes_are_confirmed_and_copied_once_per_new_step() {
+    fn routes_are_confirmed_and_copied_once_per_new_step() {
         let known = data::embedded().unwrap();
         let cache = RwLock::new(Step::default());
         let mut previous = None;
@@ -590,6 +590,8 @@ mod reader_cycle_tests {
             ("632/774\nParlez au personnage dans Srambad.", None),
             ("718/774\nEnsuite allez en [2,2] dans la dimension Srambad.", Some("/zaap -20,-20; /zaap -20,-20; /travel -22 -24")),
             ("719/774\nParlez à un personnage dans Srambad.", None),
+            ("37/101\nPartez en [12,-65] :\nZaap de la Dune des ossements", Some("/zaap 15,-58; /zaap 15,-58; /travel 12 -65")),
+            ("38/101\nParlez à Valdi Vivargent.", None),
             ("643/774\nUne fois dans la Dimension Obscure, combattez un Panterreur.\nEnsuite allez en [7,20]\nZaap du Rivage sufokien", Some("/zaap 10,22; /zaap 10,22; /travel 7 20")),
         ] {
             let mut copies = Vec::new();
